@@ -48,7 +48,3 @@ npm run build:win    # 打包 Windows x64
 `npm test` 覆盖协议校验、导入与退出清理、目录能力映射、图片转发、推理档位和系统代理解析（138 项全部通过）。免费模型及额度由上游决定，不承诺所有模型或复杂工作流均稳定。产物为 ad-hoc 临时签名，未做公证/发布者签名。
 
 内部标记 `buddyBridgeOwner` 保持不变：先前由同源版本导入 WorkBuddy 的模型条目可被本版无缝接管与清理。本地服务端口固定 41980，请勿与其他实例同时运行。
-
----
-
-致谢：本项目内核源自开源项目 [OW Bridge](https://github.com/louchi1984-coder/ow-bridge)（@娄老师说的对）。
