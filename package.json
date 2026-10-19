@@ -1,0 +1,64 @@
+{
+  "name": "buddybridge",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test test/*.test.js",
+    "build:mac": "electron-builder --mac zip --arm64 --publish never && node scripts/verify-mac.mjs",
+    "desktop": "electron .",
+    "build:win": "electron-builder --win nsis --x64 --publish never",
+    "build:win:arm64": "electron-builder --win nsis --arm64 --publish never",
+    "build:linux": "electron-builder --linux AppImage --x64 --publish never"
+  },
+  "dependencies": {
+    "tar": "7.5.22",
+    "undici": "^7.30.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3"
+  },
+  "description": "BuddyBridge — 让 WorkBuddy 使用 OpenCode 免费模型",
+  "author": "BuddyBridge",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "local.buddybridge.desktop",
+    "productName": "BuddyBridge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": false,
+    "artifactName": "BuddyBridge-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "identity": "-",
+      "minimumSystemVersion": "13.0",
+      "hardenedRuntime": false,
+      "notarize": false
+    },
+    "win": {
+      "target": "nsis",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "linux": {
+      "category": "Utility"
+    },
+    "icon": "desktop/icon.png"
+  }
+}
