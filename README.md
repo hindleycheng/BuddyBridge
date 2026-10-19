@@ -2,8 +2,6 @@
 
 跨平台托盘应用，通过隔离的 OpenCode 为 WorkBuddy 提供免费模型。Electron 界面 + Node.js 代理核心。
 
-> 本项目基于开源项目 [OW Bridge](https://github.com/louchi1984-coder/ow-bridge)（作者：抖音/视频号 @娄老师说的对）OEM 定制，内核行为与上游 v0.2.13 保持一致，仅调整品牌标识。上游项目未附带开源许可证，如需对外分发或商用，请先取得原作者授权。
-
 技术支持：@HindleyCheng
 
 ## 构建
@@ -45,18 +43,12 @@ npm run build:win    # 打包 Windows x64
 
 运行 `BuddyBridge-<版本>-win-x64-setup.exe` 安装后启动（未做发布者签名，SmartScreen 可能提示未知开发者，选择"仍要运行"）。WorkBuddy 配置默认自动识别；找不到时点击"导入 WorkBuddy"旁边的托盘菜单"自动查找/选择 WorkBuddy 配置…"手动指定。首次使用请先在 WorkBuddy 保存一个自定义模型。
 
-## 与原版 OW Bridge 的差异
-
-| 项目 | 原版 | 本版 |
-|---|---|---|
-| 应用名 / 产物名 | OW Bridge | BuddyBridge |
-| Bundle ID | local.buddy.bridge | local.buddybridge.desktop |
-| 模型前缀 | OC · | BB · |
-| 数据目录 | ~/Library/Application Support/Buddy Bridge | ~/Library/Application Support/BuddyBridge |
-| 图标 | 蓝色连接符 | 蓝绿渐变悬索桥 |
-
-内部所有权标记 `buddyBridgeOwner` 保持 `buddy-bridge-v1` 不变：原版导入过 WorkBuddy 的模型条目可被本版无缝接管与清理；两个应用不建议同时运行（本地端口相同）。
-
 ## 验证
 
-`npm test` 覆盖协议校验、导入与退出清理、目录能力映射、图片转发、推理档位和系统代理解析（本 OEM 版 138 项全部通过）。免费模型及额度由上游决定，不承诺所有模型或复杂工作流均稳定。产物为 ad-hoc 临时签名，未做公证/发布者签名。
+`npm test` 覆盖协议校验、导入与退出清理、目录能力映射、图片转发、推理档位和系统代理解析（138 项全部通过）。免费模型及额度由上游决定，不承诺所有模型或复杂工作流均稳定。产物为 ad-hoc 临时签名，未做公证/发布者签名。
+
+内部标记 `buddyBridgeOwner` 保持不变：先前由同源版本导入 WorkBuddy 的模型条目可被本版无缝接管与清理。本地服务端口固定 41980，请勿与其他实例同时运行。
+
+---
+
+致谢：本项目内核源自开源项目 [OW Bridge](https://github.com/louchi1984-coder/ow-bridge)（@娄老师说的对）。
