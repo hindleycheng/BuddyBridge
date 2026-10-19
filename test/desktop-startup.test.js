@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const entry = new URL('../desktop/main.cjs', import.meta.url);
 const require = createRequire(entry);
+// vm 沙箱执行的是仓库自带的 desktop/main.cjs 源码（构建产物的一部分），不是外部输入；
+// require/fetch 等宿主能力全部替换为测试桩，沙箱内无法访问真实文件系统之外的命令。
 
 test('early activation and second-instance events wait for Electron readiness', () => {
   let ready = false, created = 0, shown = 0;

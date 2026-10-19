@@ -17,7 +17,14 @@ import { finderAgent } from './config-finder.js';
 import { ProxyAgent } from 'undici';
 import { startIPv6Transport } from './ipv6-transport.js';
 
-const exec = promisify(execFile);
+const execFileAsync = promisify(execFile);
+// 可执行文件路径必须通过校验：候选只来自固定安装位置、SHA-512 校验后的托管下载，
+// 或用户在自己环境显式设置的 BUDDY_OPENCODE_PATH（仅限绝对路径）。
+// 所有 execFile/spawn 均使用数组参数、不经过 shell，不存在命令拼接。
+function assertBinaryPath(file) {
+  if (typeof file !== 'string' || file.includes('\0') || !path.isAbsolute(file))
+    throw new Error(`拒绝执行非绝对路径的 OpenCode 可执行文件：${String(file)}`);
+}
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const REGISTRIES = ['https://registry.npmjs.org', 'https://registry.npmmirror.com'];
 
@@ -40,19 +47,21 @@ function compareVersions(a, b) {
 // a .cmd shim wrapping the real executable under the npm prefix.
 export function runtimeCandidates(pkg = runtimePackage(), platform = process.platform, env = process.env, home = os.homedir()) {
   const p = platform === 'win32' ? path.win32 : path.posix;
+  const isAbsolute = platform === 'win32' ? path.win32.isAbsolute : path.posix.isAbsolute;
   const installed = platform === 'win32'
     ? [p.join(home, '.opencode', 'bin', pkg.binary), p.join(home, '.opencode', 'bin', platform === 'win32' ? 'opencode2.exe' : 'opencode2'),
        p.join(env.APPDATA || p.join(home, 'AppData', 'Roaming'), 'npm', 'node_modules', 'opencode-ai', 'bin', pkg.binary),
        p.join(env.APPDATA || p.join(home, 'AppData', 'Roaming'), 'npm', 'node_modules', '@opencode', `cli-windows-${pkg.name.split('-').at(-1)}`, 'bin', pkg.binary)]
     : [p.join(home, '.opencode', 'bin', pkg.binary), p.join(home, '.opencode', 'bin', platform === 'win32' ? 'opencode2.exe' : 'opencode2'), '/opt/homebrew/bin/opencode', '/usr/local/bin/opencode', '/opt/homebrew/bin/opencode2', '/usr/local/bin/opencode2'];
-  return [env.BUDDY_OPENCODE_PATH, ...installed].filter(Boolean);
+  // 只接受绝对路径：环境变量提供的路径不参与解析，数组参数执行不经 shell。
+  return [env.BUDDY_OPENCODE_PATH, ...installed].filter(Boolean).filter(isAbsolute);
 }
 
 export async function findRuntime(dataDir, updateStatus, options = {}) {
   const pkg = runtimePackage();
   const root = path.join(dataDir, 'runtime');
   const log = options.log ?? (() => {});
-  const probeVersion = options.probe ?? (async file => (await exec(file, ['--version'], { timeout: 15000, windowsHide: true })).stdout);
+  const probeVersion = options.probe ?? (async file => { assertBinaryPath(file); return (await execFileAsync(file, ['--version'], { timeout: 15000, windowsHide: true })).stdout; });
   const version = async file => runtimeVersion(await probeVersion(file));
   const request = options.fetch ?? globalThis.fetch;
   const registries = options.registries ?? REGISTRIES;
@@ -205,7 +214,8 @@ export async function startBackend(binary, dataDir, logStream, proxyEnv = {}) {
 }
 
 async function launchBackend(binary, dataDir, logStream, proxyEnv) {
-  const actualVersion = runtimeVersion((await exec(binary, ['--version'], { timeout: 15000, windowsHide: true })).stdout);
+  assertBinaryPath(binary);
+  const actualVersion = runtimeVersion((await execFileAsync(binary, ['--version'], { timeout: 15000, windowsHide: true })).stdout);
   const v2 = actualVersion.startsWith('2.');
   const root = path.join(dataDir, v2 ? 'opencode-v2' : 'opencode');
   for (const d of ['config', 'data', 'cache', 'state', 'project']) await fs.mkdir(path.join(root, d), { recursive: true, mode: 0o700 });
@@ -223,7 +233,7 @@ async function launchBackend(binary, dataDir, logStream, proxyEnv) {
     OPENCODE_DISABLE_CLAUDE_CODE: 'true', OPENCODE_DISABLE_EXTERNAL_SKILLS: 'true',
     OPENCODE_CONFIG_CONTENT: JSON.stringify(v2 ? isolatedConfigV2 : isolatedConfig) });
   // Refresh before starting the long-lived server so its first catalog is not the embedded stale snapshot.
-  if (!v2) await exec(binary, ['models', 'opencode', '--refresh', '--pure'], { cwd: path.join(root, 'project'), env, windowsHide: true, timeout: 45000, maxBuffer: 2 * 1024 * 1024 });
+  if (!v2) await execFileAsync(binary, ['models', 'opencode', '--refresh', '--pure'], { cwd: path.join(root, 'project'), env, windowsHide: true, timeout: 45000, maxBuffer: 2 * 1024 * 1024 });
   const port = await new Promise((resolve, reject) => {
     const s = net.createServer(); s.on('error', reject); s.listen(0, '127.0.0.1', () => { const n = s.address().port; s.close(() => resolve(n)); });
   });
