@@ -1,8 +1,12 @@
 import http from 'node:http';
 import net from 'node:net';
 
-// Keep TLS end-to-end while selecting IPv6 for OpenCode's HTTPS connections.
+// Keep TLS end-to-end while steering OpenCode's HTTPS connections to IPv6 first.
+// A machine without IPv6 routing must still work: a local address-family failure
+// (no route, no resolver record) falls back to default selection instead of
+// failing every request. Remote rejections do not change the address family.
 export async function startIPv6Transport(log = () => {}) {
+  let ipv6Broken = false;
   const sockets = new Set();
   const track = socket => {
     sockets.add(socket);
@@ -19,22 +23,40 @@ export async function startIPv6Transport(log = () => {}) {
         !(target.hostname === 'opencode.ai' || target.hostname.endsWith('.opencode.ai'))) {
       client.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return;
     }
-    let connected = false;
-    const upstream = track(net.connect({ host: target.hostname, port: 443, family: 6 }, () => {
-      connected = true;
-      log(`IPv6 direct ${target.hostname} -> ${upstream.remoteAddress}`);
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      if (head.length) upstream.write(head);
-      client.pipe(upstream); upstream.pipe(client);
-    }));
-    upstream.on('error', error => {
-      log(`IPv6 direct failed ${target.hostname}: ${error.code || error.message}`);
-      if (!connected) client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+    const state = { connected: false, family: null, socket: null };
+    const attempt = family => {
+      state.family = family;
+      const socket = track(net.connect({ host: target.hostname, port: 443, ...(family ? { family } : {}) }, () => {
+        state.connected = true;
+        log(`${family === 6 ? 'IPv6' : 'Default'} direct ${target.hostname} -> ${socket.remoteAddress}`);
+        client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head.length) socket.write(head);
+        client.pipe(socket); socket.pipe(client);
+      }));
+      socket.on('close', () => { if (state.connected) client.destroy(); });
+      state.socket = socket;
+      return socket;
+    };
+    const fail = (label, error) => {
+      log(`${label} connection failed ${target.hostname}: ${error.code || error.message}`);
+      if (!state.connected) client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
       else client.destroy();
+    };
+    attempt(ipv6Broken ? undefined : 6);
+    state.socket.on('error', error => {
+      if (state.connected) { client.destroy(); return; }
+      log(`IPv6 direct failed ${target.hostname}: ${error.code || error.message}`);
+      // Only an immediate local address-family failure proves IPv6 is unusable;
+      // refused or reset remote connections must not downgrade later attempts.
+      if (state.family === 6 && ['ENOENT', 'ENOTFOUND', 'EADDRNOTAVAIL', 'ENETUNREACH', 'EPFNOSUPPORT', 'EAFNOSUPPORT'].includes(error.code)) {
+        ipv6Broken = true;
+        log('IPv6 unavailable on this machine; falling back to default address selection');
+        attempt(undefined);
+        state.socket.on('error', fallbackError => fail('Default', fallbackError));
+      } else fail('IPv6', error);
     });
-    client.on('error', () => upstream.destroy());
-    client.on('close', () => upstream.destroy());
-    upstream.on('close', () => { if (connected) client.destroy(); });
+    client.on('error', () => state.socket?.destroy());
+    client.on('close', () => state.socket?.destroy());
   });
   await new Promise((resolve, reject) => {
     server.once('error', reject);

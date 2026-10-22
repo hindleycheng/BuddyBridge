@@ -24,6 +24,13 @@ export function probeGate(blockedUntil, { manual = false, confirmed = false } = 
 
 // A rejected gateway must not receive requests for the remainder of the catalog.
 // The callback returns the final error, including a failed chat-only fallback.
+// A per-model geo restriction (e.g. "not available in your country") is permanent and
+// scoped to that one model: it records a failure but must not pause the whole queue.
+export function isModelLevelRejection(error) {
+  return error?.status === 403 && error?.code === 'model_error'
+    && /not available|unavailable|country|region|国家|地区|区域/i.test(error?.message || '');
+}
+
 export async function runProbeQueue(models, { probe, onPending, onBlocked, signal, sleep = delay, random = Math.random }) {
   const pending = models.map(model => model.id);
   onPending([...pending]);
@@ -33,7 +40,7 @@ export async function runProbeQueue(models, { probe, onPending, onBlocked, signa
     pending.shift();
     onPending([...pending]);
     if (signal.aborted) break;
-    if ([401, 403, 429].includes(error?.status)) {
+    if ([401, 403, 429].includes(error?.status) && !isModelLevelRejection(error)) {
       await onBlocked(error);
       break;
     }

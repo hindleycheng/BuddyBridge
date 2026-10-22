@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cachedProbe, modelFingerprint, probeGate, runProbeQueue, PROBE_COOLDOWN, PROBE_CACHE_TTL, PROBE_INTERVAL } from '../src/probe-policy.js';
+import { cachedProbe, modelFingerprint, probeGate, runProbeQueue, isModelLevelRejection, PROBE_COOLDOWN, PROBE_CACHE_TTL, PROBE_INTERVAL } from '../src/probe-policy.js';
 
 const models = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
 for (const status of [401, 403, 429]) test(`gateway ${status} stops queue, leaves remaining pending, and requires confirmation during cooldown`, async () => {
@@ -20,6 +20,31 @@ for (const status of [401, 403, 429]) test(`gateway ${status} stops queue, leave
   assert.equal(probeGate(blockedUntil, { manual: true }).confirmationRequired, true);
   assert.equal(probeGate(blockedUntil, { manual: true, confirmed: true }), null);
   assert.equal(probeGate(blockedUntil, {}, blockedUntil), null);
+});
+
+test('a per-model geo restriction records failure but lets the queue continue', async () => {
+  const calls = [];
+  let blocked = false;
+  await runProbeQueue(models, {
+    signal: new AbortController().signal,
+    probe: async model => {
+      calls.push(model.id);
+      return model.id === 'a' ? { status: 403, code: 'model_error', message: 'This model is not available in your country' } : { ok: true };
+    },
+    onPending() {},
+    onBlocked: () => blocked = true,
+  });
+  assert.deepEqual(calls, ['a', 'b', 'c'], 'geo-blocked model must not veto the rest');
+  assert.equal(blocked, false, 'geo block is not a gateway rejection');
+});
+
+test('isModelLevelRejection distinguishes per-model restrictions from gateway rejections', () => {
+  assert.equal(isModelLevelRejection({ status: 403, code: 'model_error', message: 'This model is not available in your country' }), true);
+  assert.equal(isModelLevelRejection({ status: 403, code: 'model_error', message: '模型在当前区域不可用' }), true);
+  assert.equal(isModelLevelRejection({ status: 403, code: 'model_error', message: 'FreeTierError' }), false, 'gateway-level free-tier rejection still pauses');
+  assert.equal(isModelLevelRejection({ status: 403, code: 'upstream_error', message: 'This model is not available in your country' }), false, 'non-model codes are not geo blocks');
+  assert.equal(isModelLevelRejection({ status: 429, code: 'model_error', message: 'not available in your country' }), false, '429 is always gateway-level');
+  assert.equal(isModelLevelRejection(undefined), false);
 });
 
 test('success cache expires and model declaration changes invalidate it', () => {

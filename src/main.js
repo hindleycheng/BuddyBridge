@@ -14,7 +14,7 @@ import { prepare, BridgeError } from './protocol.js';
 import { PROBE_TIMEOUT, probeBody, probeModel, probeFailure, formatUnsupported } from './probe.js';
 import { modelResult, withRequestMeta } from './model-status.js';
 import { atomicWrite, syncModels } from './sync.js';
-import { cachedProbe, modelFingerprint, probeGate, runProbeQueue, PROBE_COOLDOWN, PROBE_PAUSED } from './probe-policy.js';
+import { cachedProbe, modelFingerprint, probeGate, runProbeQueue, isModelLevelRejection, PROBE_COOLDOWN, PROBE_PAUSED } from './probe-policy.js';
 
 const dataDir = process.env.BUDDY_DATA_DIR || dataDirectory();
 const port = Number(process.env.BUDDY_PORT || 41980);
@@ -34,7 +34,10 @@ const endpoint = `http://127.0.0.1:${port}/v1`;
 let models = [], runtime, binary, stopping = false, refreshing;
 let previous = {};
 try { previous = JSON.parse(await fs.readFile(path.join(dataDir, 'status.json'), 'utf8')); } catch {}
-let state = { useSystemProxy: settings.useSystemProxy === true || (process.platform === 'win32' && settings.useSystemProxy !== false), phase: 'starting', message: '正在启动', endpoint, pid: process.pid, version: '0.2.0', opencodeVersion: null, models: [], excludedModels: settings.excludedModels || [], modelResults: previous.modelResults || {}, sync: null, availableModels: [], pendingModels: previous.pendingModels || [], probeBlockedUntil: Number(previous.probeBlockedUntil) || 0, probe: { running: false } };
+// Direct connection is the default: local IPv6-first fallback reaches the gateway on
+// machines without IPv6, while a system proxy exit is routinely rejected or stalled by
+// the free gateway. Users who need the proxy path turn the switch on explicitly.
+let state = { useSystemProxy: settings.useSystemProxy === true, phase: 'starting', message: '正在启动', endpoint, pid: process.pid, version: '0.2.0', opencodeVersion: null, models: [], excludedModels: settings.excludedModels || [], modelResults: previous.modelResults || {}, sync: null, availableModels: [], pendingModels: previous.pendingModels || [], probeBlockedUntil: Number(previous.probeBlockedUntil) || 0, probe: { running: false } };
 // Serialize status writes so an older async update cannot overwrite a newer state.
 let statusWrites = Promise.resolve();
 function update(patch) {
@@ -176,7 +179,10 @@ function startProbes(modelID, { manual = false, confirmed = false, force = false
           } catch (cause) {
             const e = probeFailure(cause, timedOut);
             failure = e;
-            if (!stopping && [401, 403, 429].includes(e.status)) {
+            if (!stopping && isModelLevelRejection(e)) {
+              // A permanent per-model restriction (geo block): mark it, keep probing the rest.
+              await record(model.id, false, `${e.message}（此模型对当前地区不开放，已跳过）`, e.status, 'geo_blocked', Math.round(performance.now() - started), 'probe', undefined, meta);
+            } else if (!stopping && [401, 403, 429].includes(e.status)) {
               await record(model.id, false, e.message, e.status, e.code, Math.round(performance.now() - started), 'probe', undefined, meta);
             } else if (!stopping && e.code === 'no_action') {
               // Replying with text says the model works, not that it failed: it is usable for
@@ -198,7 +204,11 @@ function startProbes(modelID, { manual = false, confirmed = false, force = false
       });
     } finally {
       probing = false;
-      update({ probe: { running: false }, ...(state.probeBlockedUntil > Date.now() ? {} : { message: `运行中 · ${models.length} 个免费模型` }) });
+      // Every probe timed out while the system-proxy switch is on: that exit path is the
+      // prime suspect, so say so instead of leaving a wall of anonymous timeouts.
+      const allTimedOut = selected.length > 1 && selected.every(m => state.modelResults[m.id]?.code === 'timeout' && state.modelResults[m.id]?.time);
+      const hint = allTimedOut && state.useSystemProxy ? '；当前走系统代理，若代理出口不受网关支持，请关闭"使用系统代理"后重新检测' : '';
+      update({ probe: { running: false }, ...(state.probeBlockedUntil > Date.now() ? {} : { message: `运行中 · ${models.length} 个免费模型${hint}` }) });
     }
   })().catch(e => console.error('Model detection failed:', e.message));
   return { started: true };
@@ -364,16 +374,18 @@ try {
   let startupProxyEnv;
   try { startupProxyEnv = await systemProxyEnvironment(state.useSystemProxy); }
   catch (error) {
-    // A fresh install prefers the system proxy when one exists, but a machine without a manual
-    // proxy must still be able to download directly. An explicitly saved "on" setting remains strict.
+    // Only an explicitly saved "on" setting is strict; the default (direct) ignores a
+    // missing or PAC-only proxy config and keeps downloading without it.
     if (settings.useSystemProxy === true) throw error;
     startupProxyEnv = await systemProxyEnvironment(false);
     update({ useSystemProxy: false });
-    log.write(`${new Date().toISOString()} 未检测到可用的系统代理，首次下载改为直连：${error.message}\n`);
+    log.write(`${new Date().toISOString()} 未检测到可用的系统代理，已使用直连：${error.message}\n`);
   }
   binary = await findRuntime(dataDir, message => update({ message }), {
     proxyEnv: startupProxyEnv,
     onProxyFallback: async () => {
+      // A dead proxy must not strand the session: drop back to direct unless the user
+      // explicitly pinned the switch on.
       if (settings.useSystemProxy !== true) {
         startupProxyEnv = await systemProxyEnvironment(false);
         update({ useSystemProxy: false });
