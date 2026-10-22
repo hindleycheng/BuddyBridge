@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import net from 'node:net';
 import { promisify } from 'node:util';
 const exec = promisify(execFile);
 
@@ -22,10 +23,25 @@ export async function systemProxyEnvironment(enabled) {
   if (process.platform === 'win32') {
     const script = "Get-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' | Select-Object ProxyEnable,ProxyServer | ConvertTo-Json -Compress";
     const result = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 5000, windowsHide: true });
-    return parseWindowsProxy(JSON.parse(result.stdout));
+    return await probeProxyAddress(parseWindowsProxy(JSON.parse(result.stdout)));
   }
   if (process.platform !== 'darwin') throw new Error('此系统暂不支持读取系统代理');
-  return parseSystemProxy((await exec('/usr/sbin/scutil', ['--proxy'], { timeout: 5000 })).stdout);
+  return await probeProxyAddress(parseSystemProxy((await exec('/usr/sbin/scutil', ['--proxy'], { timeout: 5000 })).stdout));
+}
+
+// A registered proxy that refuses connections silently stalls every request behind
+// connect timeouts. Verify the port accepts TCP before handing the address downstream.
+export async function probeProxyAddress(env, timeout = 1500) {
+  const address = new URL(env.HTTPS_PROXY || env.https_proxy);
+  const reachable = await new Promise(resolve => {
+    const socket = net.connect({ host: address.hostname, port: Number(address.port) || 80 });
+    const done = value => { socket.destroy(); resolve(value); };
+    socket.setTimeout(timeout, () => done(false));
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+  });
+  if (!reachable) throw new Error(`系统代理 ${address.host} 无法连接，请关闭代理开关或检查代理软件`);
+  return env;
 }
 
 export function parseWindowsProxy(settings) {
