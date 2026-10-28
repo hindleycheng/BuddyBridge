@@ -24,7 +24,7 @@ test('startup imports cached models without probing; repeated checks and reads r
   await new Promise(resolve => socket.close(resolve));
   const child = spawn(process.execPath, ['--loader', new URL('./fixtures/runtime-loader.mjs', import.meta.url).href, 'src/main.js'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
-    env: { ...process.env, BUDDY_DATA_DIR: root, BUDDY_PORT: String(port), BUDDY_MODELS_FILE: config, BUDDY_NO_SYNC: '0' }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    env: { ...process.env, BUDDY_DATA_DIR: root, BUDDY_PORT: String(port), BUDDY_MODELS_FILE: config, BUDDY_NO_SYNC: '0', BUDDY_DSH_HOME: path.join(root, 'dsh-home') }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let logs = ''; child.stdout.on('data', x => logs += x); child.stderr.on('data', x => logs += x);
   const exited = new Promise(resolve => child.once('exit', resolve));

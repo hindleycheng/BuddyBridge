@@ -99,7 +99,8 @@ function render() {
     $(id).append(document.createTextNode(active ? id === 'update-runtime' ? '正在更新…' : id === 'import' ? '正在导入…' : id === 'refresh' ? '正在读取…' : '正在检测…' : title));
   }
   const sync = state.sync;
-  $('sync').textContent = (state.configSearch?.running ? 'OpenCode 正在只读查找 WorkBuddy 配置…' : state.configSearch?.candidates?.length > 1 && !state.modelsFile ? '已找到配置文件，点击导入 WorkBuddy 使用最近访问的一份。' : '') || sync?.error || (sync?.time ? `已导入 ${sync.count ?? 0} 个模型 · 再次检测后需点击导入 WorkBuddy 更新` : '启动时仅导入有效缓存；检测后需手动导入 WorkBuddy');
+  const base = (state.configSearch?.running ? 'OpenCode 正在只读查找 WorkBuddy 配置…' : state.configSearch?.candidates?.length > 1 && !state.modelsFile ? '已找到配置文件，点击导入 WorkBuddy 使用最近访问的一份。' : '') || sync?.error || (sync?.time ? `已导入 ${sync.count ?? 0} 个模型 · 再次检测后需点击导入 WorkBuddy 更新` : '启动时仅导入有效缓存；检测后需手动导入 WorkBuddy');
+  $('sync').textContent = base + (state.dsh?.available ? ` · DSH ${state.dsh.sync?.error ? '同步失败' : `${state.dsh.sync?.count ?? 0} 个模型`}` : '');
   renderModels();
 }
 async function run(name, value) {
@@ -114,7 +115,8 @@ async function run(name, value) {
     if (name === 'import') {
       const r = response.result;
       if (r.canceled) { feedback('已取消导入，配置未更改。'); return; }
-      feedback(r.changed === false ? `配置已是最新，共 ${r.count} 个模型，无需重复写入。` : `导入完成，已将 ${r.count} 个可用模型导入 WorkBuddy。`);
+      const dshNote = r.dsh ? (r.dsh.error ? `；DeepSeek Harness 同步失败：${r.dsh.error}` : `；DeepSeek Harness 已同步 ${r.dsh.count} 个模型（DSH 内即可选择）`) : '';
+      feedback((r.changed === false ? `配置已是最新，共 ${r.count} 个模型，无需重复写入。` : `导入完成，已将 ${r.count} 个可用模型导入 WorkBuddy。`) + dshNote);
     }
   } catch (error) { feedback(error.message, true); }
   finally { pendingAction = false; render(); }
