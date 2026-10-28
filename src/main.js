@@ -7,6 +7,7 @@ import { searchConfig, windowsSearchRoots } from './config-finder.js';
 import { dataDirectory } from './platform.js';
 import { randomBytes } from 'node:crypto';
 import { findRuntime, startBackend } from './runtime.js';
+import { normalizeGatewayIPs } from './ipv6-transport.js';
 import { createServer } from './server.js';
 import { listenService } from './service-instance.js';
 import { systemProxyEnvironment } from './system-proxy.js';
@@ -32,13 +33,18 @@ const settingsFile = path.join(dataDir, 'settings.json');
 let settings = {};
 try { settings = JSON.parse(await fs.readFile(settingsFile, 'utf8')); } catch {}
 const endpoint = `http://127.0.0.1:${port}/v1`;
+// 网关优选 IP（Cloudflare 优选）：直连时优先经这些边缘 IP 访问网关，失败自动回退默认链路。
+let gatewayIPs = normalizeGatewayIPs(settings.gatewayIPs).ips;
+// 检测结果缓存时长（小时）：默认 8，可延长到 24/72，白天测一次管全天。
+const cacheHours = () => ([8, 24, 72].includes(Number(settings.cacheHours)) ? Number(settings.cacheHours) : 8);
+const probeTtl = () => cacheHours() * 60 * 60 * 1000;
 let models = [], runtime, binary, stopping = false, refreshing;
 let previous = {};
 try { previous = JSON.parse(await fs.readFile(path.join(dataDir, 'status.json'), 'utf8')); } catch {}
 // Direct connection is the default: local IPv6-first fallback reaches the gateway on
 // machines without IPv6, while a system proxy exit is routinely rejected or stalled by
 // the free gateway. Users who need the proxy path turn the switch on explicitly.
-let state = { useSystemProxy: settings.useSystemProxy === true, phase: 'starting', message: '正在启动', endpoint, pid: process.pid, version: '0.2.0', opencodeVersion: null, models: [], excludedModels: settings.excludedModels || [], modelResults: previous.modelResults || {}, sync: null, availableModels: [], pendingModels: previous.pendingModels || [], probeBlockedUntil: Number(previous.probeBlockedUntil) || 0, probe: { running: false } };
+let state = { useSystemProxy: settings.useSystemProxy === true, phase: 'starting', message: '正在启动', endpoint, pid: process.pid, version: '0.2.0', opencodeVersion: null, models: [], excludedModels: settings.excludedModels || [], modelResults: previous.modelResults || {}, sync: null, availableModels: [], pendingModels: previous.pendingModels || [], probeBlockedUntil: Number(previous.probeBlockedUntil) || 0, probe: { running: false }, gatewayIPs, cacheHours: cacheHours() };
 // Serialize status writes so an older async update cannot overwrite a newer state.
 let statusWrites = Promise.resolve();
 function update(patch) {
@@ -52,7 +58,7 @@ const log = createWriteStream(logFile, { flags: 'a', mode: 0o600 });
 const validated = new Set();
 function restoreCachedModels() {
   validated.clear();
-  for (const model of models) if (cachedProbe(model, state.modelResults[model.id], previous.models?.find(m => m.id === model.id))) validated.add(model.id);
+  for (const model of models) if (cachedProbe(model, state.modelResults[model.id], previous.models?.find(m => m.id === model.id), Date.now(), probeTtl())) validated.add(model.id);
   update({ models, pendingModels: models.filter(m => !validated.has(m.id) && (state.pendingModels.includes(m.id) || state.modelResults[m.id]?.ok !== false)).map(m => m.id) });
   update({ availableModels: usableModels().map(m => m.id) });
 }
@@ -158,7 +164,7 @@ function startProbes(modelID, { manual = false, confirmed = false, force = false
   if (blocked) { update({ message: PROBE_PAUSED }); return blocked; }
   const candidates = modelID ? models.filter(m => m.id === modelID) : models;
   if (modelID && !candidates.length) throw new Error('模型不在当前目录中');
-  const selected = candidates.filter(m => manual || force || !cachedProbe(m, state.modelResults[m.id], previous.models?.find(old => old.id === m.id)));
+  const selected = candidates.filter(m => manual || force || !cachedProbe(m, state.modelResults[m.id], previous.models?.find(old => old.id === m.id), Date.now(), probeTtl()));
   if (!selected.length) return { started: false, message: '没有需要检测的模型' };
   probing = true;
   update({ message: '正在检测模型…' });
@@ -246,7 +252,7 @@ async function refresh(restartRuntime = false, useSystemProxy = state.useSystemP
   update({ phase: 'reading', message: '正在读取免费模型…', models: [], availableModels: [] });
   refreshing = (async () => {
     if (restartRuntime) {
-      const next = attachTranslator(await startBackend(binary, dataDir, log, proxyEnv));
+      const next = attachTranslator(await startBackend(binary, dataDir, log, proxyEnv, gatewayIPs));
       if (stopping) { await next.stop(); return; }
       const old = runtime;
       runtime = next;
@@ -279,7 +285,7 @@ async function updateRuntime() {
       if (stopping) return;
       if (target === binary) return { changed: false, version: runtime.version };
       update({ message: '正在启动新版 OpenCode…' });
-      next = attachTranslator(await startBackend(target, dataDir, log, proxyEnv));
+      next = attachTranslator(await startBackend(target, dataDir, log, proxyEnv, gatewayIPs));
       const discovered = await next.backend.models();
       if (stopping) return;
       const old = runtime;
@@ -310,6 +316,26 @@ async function setSystemProxy(enabled) {
   settings = { ...settings, useSystemProxy: enabled };
   await atomicWrite(settingsFile, JSON.stringify(settings));
   return { useSystemProxy: enabled };
+}
+async function setPrefs(prefs = {}) {
+  if (refreshing || probing || stopping || configSearch) throw new Error('请等待读取和检测完成');
+  const next = { ...settings };
+  let restart = false;
+  if (prefs.gatewayIPs !== undefined) {
+    const { ips, invalid } = normalizeGatewayIPs(prefs.gatewayIPs);
+    if (invalid.length) throw new Error(`优选 IP 格式不正确：${invalid.join('、')}`);
+    if (JSON.stringify(ips) !== JSON.stringify(gatewayIPs)) restart = true;
+    next.gatewayIPs = ips; gatewayIPs = ips;
+  }
+  if (prefs.cacheHours !== undefined) {
+    if (![8, 24, 72].includes(Number(prefs.cacheHours))) throw new Error('缓存时长仅支持 8/24/72 小时');
+    next.cacheHours = Number(prefs.cacheHours);
+  }
+  settings = next;
+  await atomicWrite(settingsFile, JSON.stringify(next));
+  if (restart) await refresh(true);
+  update({ gatewayIPs, cacheHours: cacheHours() });
+  return { gatewayIPs, cacheHours: cacheHours() };
 }
 let configSearch;
 async function findConfig(afterProbe = false) {
@@ -406,10 +432,10 @@ try {
     },
     log: message => log.write(`${new Date().toISOString()} ${message}\n`),
   });
-  server = createServer({ server, key, selectModel, backend: { complete: (...args) => runtime.backend.complete(...args) }, getModels: publishedModels, refresh: readModels, importModels, findConfig, setSystemProxy, updateRuntime,
+  server = createServer({ server, key, selectModel, backend: { complete: (...args) => runtime.backend.complete(...args) }, getModels: publishedModels, refresh: readModels, importModels, findConfig, setSystemProxy, updateRuntime, setPrefs,
     status: () => state, probe: startProbes, onResult: record, onActivity: noteActivity });
   update({ message: '正在启动隔离模型服务' });
-  runtime = attachTranslator(await startBackend(binary, dataDir, log, startupProxyEnv));
+  runtime = attachTranslator(await startBackend(binary, dataDir, log, startupProxyEnv, gatewayIPs));
   watchRuntime(runtime);
   // Confirm this runtime has the dedicated agent, not a user's build agent.
   const agents = await runtime.backend.request('/agent');

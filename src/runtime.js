@@ -199,9 +199,9 @@ export const isolatedConfig = {
     permission: nativePermissions } },
 };
 
-export async function startBackend(binary, dataDir, logStream, proxyEnv = {}) {
+export async function startBackend(binary, dataDir, logStream, proxyEnv = {}, gatewayIPs = []) {
   const direct = proxyEnv.HTTPS_PROXY || proxyEnv.https_proxy ? null
-    : await startIPv6Transport(message => logStream.write(`${new Date().toISOString()} ${message}\n`));
+    : await startIPv6Transport({ gatewayIPs, log: message => logStream.write(`${new Date().toISOString()} ${message}\n`) });
   try {
     const runtime = await launchBackend(binary, dataDir, logStream, direct?.env || proxyEnv);
     if (direct) {

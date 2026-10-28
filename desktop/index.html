@@ -30,7 +30,11 @@
   <section id="models" aria-label="模型列表"></section>
   <p class="note">启动时不全量检测；成功结果缓存 8 小时。手动检测会使用免费额度，不代表完整工具流程已验证。耗时为完整请求用时，非首字延迟。不可用模型仅在本窗口保留，不供 WorkBuddy 使用；剩余额度暂不可查询。</p>
   <footer class="bar">
-    <label class="toggle-label">使用系统代理 <input id="proxy" type="checkbox" role="switch"></label>
+    <div class="foot-left">
+      <label class="toggle-label">使用系统代理 <input id="proxy" type="checkbox" role="switch"></label>
+      <label class="pref-label" title="填入 Cloudflare 优选 IP（逗号分隔），直连时优先经它访问网关；留空使用自动链路">优选IP <input id="gateway-ips" type="text" placeholder="留空自动" spellcheck="false" autocomplete="off"></label>
+      <label class="pref-label" title="检测结果的有效缓存时长；延长时间可减少重复检测">缓存 <select id="cache-hours"><option value="8">8小时</option><option value="24">24小时</option><option value="72">72小时</option></select></label>
+    </div>
     <div class="foot-right">
       <button id="contact-card" class="support" title="点击查看二维码名片">▣ 技术支持 @HindleyCheng</button>
       <span id="app-version">BuddyBridge</span>

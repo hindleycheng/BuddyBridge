@@ -11,9 +11,9 @@ export function modelFingerprint(model) {
     : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
   return createHash('sha256').update(JSON.stringify(canonical(model))).digest('hex');
 }
-export function cachedProbe(model, result, previousModel, now = Date.now()) {
+export function cachedProbe(model, result, previousModel, now = Date.now(), ttl = PROBE_CACHE_TTL) {
   const age = now - Date.parse(result?.time);
-  return result?.ok === true && age >= 0 && age < PROBE_CACHE_TTL
+  return result?.ok === true && age >= 0 && age < ttl
     && (result.catalogFingerprint || (previousModel && modelFingerprint(previousModel))) === modelFingerprint(model);
 }
 export function probeGate(blockedUntil, { manual = false, confirmed = false } = {}, now = Date.now()) {
