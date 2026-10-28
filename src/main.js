@@ -14,6 +14,7 @@ import { prepare, BridgeError } from './protocol.js';
 import { PROBE_TIMEOUT, probeBody, probeModel, probeFailure, formatUnsupported } from './probe.js';
 import { modelResult, withRequestMeta } from './model-status.js';
 import { atomicWrite, syncModels } from './sync.js';
+import { dshPaths, syncDshProvider } from './dsh-sync.js';
 import { cachedProbe, modelFingerprint, probeGate, runProbeQueue, isModelLevelRejection, PROBE_COOLDOWN, PROBE_PAUSED } from './probe-policy.js';
 
 const dataDir = process.env.BUDDY_DATA_DIR || dataDirectory();
@@ -73,6 +74,12 @@ let modelsFile = process.platform === 'win32'
   : process.env.BUDDY_MODELS_FILE || path.join(os.homedir(), '.workbuddy/models.json');
 update({ modelsFile });
 
+// DeepSeek Harness ride-along sync: when its plain-text patch layer exists, publishing
+// models also refreshes the `buddybridge` provider there (hot-reloaded by DSH, no restart).
+const dsh = dshPaths();
+const dshAvailable = await fs.stat(dsh.patch).then(() => true, () => false);
+if (dshAvailable) update({ dsh: { available: true } });
+
 function syncPublished(published = publishedModels().filter(m => !(settings.excludedModels || []).includes(m.id))) {
   syncWrites = syncWrites.then(async () => {
     let sync;
@@ -84,8 +91,14 @@ function syncPublished(published = publishedModels().filter(m => !(settings.excl
       }
       catch (e) { sync = { error: e.message }; }
     }
+    let dshSync;
+    if (dshAvailable && process.env.BUDDY_NO_SYNC !== '1') {
+      try { dshSync = await syncDshProvider(dsh, published, endpoint, key); }
+      catch (e) { dshSync = { error: e.message }; }
+      update({ dsh: { available: true, sync: { ...dshSync, time: new Date().toISOString() } } });
+    }
     update({ sync: { ...sync, time: new Date().toISOString() } });
-    return sync;
+    return dshSync ? { ...sync, dsh: dshSync } : sync;
   });
   return syncWrites;
 }
