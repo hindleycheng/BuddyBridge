@@ -73,7 +73,7 @@ async function readState() {
   } catch {}
 }
 async function action(name, value) {
-  if (!['refresh', 'probe', 'import', 'update-runtime', 'system-proxy', 'restart', 'choose-config', 'find-config', 'selection'].includes(name)) throw new Error('未知操作');
+  if (!['refresh', 'probe', 'import', 'update-runtime', 'system-proxy', 'restart', 'choose-config', 'find-config', 'selection', 'prefs'].includes(name)) throw new Error('未知操作');
   if (state.configSearch?.running) throw new Error('请等待配置查找完成');
   if (actionBusy) throw new Error('请等待当前操作完成');
   if (name === 'restart') {
@@ -114,7 +114,7 @@ async function action(name, value) {
     const endpoint = `http://127.0.0.1:${Number(process.env.BUDDY_PORT || 41980)}`;
     const send = confirmed => fetch(`${endpoint}/admin/${name}`, { method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(name === 'probe' ? { confirmed } : name === 'system-proxy' ? { enabled: value } : name === 'selection' ? value : modelsFile ? { modelsFile } : {}), ...(name === 'update-runtime' ? {} : { signal: AbortSignal.timeout(150000) }) });
+      body: JSON.stringify(name === 'probe' ? { confirmed } : name === 'system-proxy' ? { enabled: value } : name === 'selection' || name === 'prefs' ? value : modelsFile ? { modelsFile } : {}), ...(name === 'update-runtime' ? {} : { signal: AbortSignal.timeout(150000) }) });
     let response = await send(false);
     let result = await response.json();
     if (name === 'probe' && response.ok && result.confirmationRequired) {

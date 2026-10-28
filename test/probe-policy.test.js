@@ -52,6 +52,7 @@ test('success cache expires and model declaration changes invalidate it', () => 
   const result = { ok: true, time: new Date(now - 1000).toISOString(), catalogFingerprint: modelFingerprint(model) };
   assert.equal(cachedProbe(model, result, undefined, now), true);
   assert.equal(cachedProbe(model, result, undefined, now + PROBE_CACHE_TTL), false);
+  assert.equal(cachedProbe(model, result, undefined, now + PROBE_CACHE_TTL, 24 * 60 * 60 * 1000), true, 'A longer TTL keeps the cache valid');
   assert.equal(cachedProbe({ ...model, images: true }, result, undefined, now), false);
   assert.equal(cachedProbe(model, { ...result, ok: false }, undefined, now), false);
   assert.equal(cachedProbe(model, { ...result, time: 'invalid' }, undefined, now), false);

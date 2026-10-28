@@ -2,7 +2,69 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import { once } from 'node:events';
-import { startIPv6Transport } from '../src/ipv6-transport.js';
+import { startIPv6Transport, normalizeGatewayIPs } from '../src/ipv6-transport.js';
+
+test('normalizeGatewayIPs accepts IPv4/IPv6 lists and reports invalid entries', () => {
+  assert.deepEqual(normalizeGatewayIPs('104.16.1.1, 2606:4700::6810:84e5,104.16.1.1'), { ips: ['104.16.1.1', '2606:4700::6810:84e5'], invalid: [] });
+  assert.deepEqual(normalizeGatewayIPs(['104.16.1.1', 'example.com', '999.1.1.1', '']).invalid, ['example.com', '999.1.1.1']);
+  assert.deepEqual(normalizeGatewayIPs('').ips, []);
+});
+
+test('gateway IPs are tried first and a failed IP advances to the next candidate', async t => {
+  const echo = net.createServer(socket => socket.pipe(socket));
+  await new Promise(resolve => echo.listen(0, '127.0.0.1', resolve));
+  t.after(() => echo.close());
+  const connect = net.connect;
+  const attempts = [];
+  t.mock.method(net, 'connect', (options, callback) => {
+    attempts.push(options);
+    if (options.host === '203.0.113.1') {
+      const socket = new net.Socket();
+      process.nextTick(() => socket.destroy(Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })));
+      return socket;
+    }
+    return connect({ host: '127.0.0.1', port: echo.address().port }, callback);
+  });
+  const transport = await startIPv6Transport({ gatewayIPs: ['203.0.113.1', '198.51.100.7'] });
+  t.after(() => transport.stop());
+  const client = connectClient(Number(new URL(transport.env.HTTPS_PROXY).port), 'opencode.ai:443');
+  assert.match((await once(client, 'data'))[0].toString(), /200 Connection Established/);
+  client.write('via-gateway-ip');
+  assert.equal((await once(client, 'data'))[0].toString(), 'via-gateway-ip');
+  client.destroy();
+  assert.deepEqual(attempts.map(a => a.host), ['203.0.113.1', '198.51.100.7']);
+  assert.equal(attempts[0].port, 443, 'Gateway IPs connect on the HTTPS port');
+});
+
+test('when every gateway IP fails, the chain still reaches the resolved families', async t => {
+  const echo = net.createServer(socket => socket.pipe(socket));
+  await new Promise(resolve => echo.listen(0, '127.0.0.1', resolve));
+  t.after(() => echo.close());
+  const connect = net.connect;
+  const attempts = [];
+  t.mock.method(net, 'connect', (options, callback) => {
+    attempts.push(options);
+    if (options.host === '203.0.113.1') {
+      const socket = new net.Socket();
+      process.nextTick(() => socket.destroy(Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })));
+      return socket;
+    }
+    if (options.family === 6) {
+      const socket = new net.Socket();
+      process.nextTick(() => socket.destroy(Object.assign(new Error('unreach'), { code: 'ENETUNREACH' })));
+      return socket;
+    }
+    return connect({ host: '127.0.0.1', port: echo.address().port }, callback);
+  });
+  const logs = [];
+  const transport = await startIPv6Transport({ gatewayIPs: ['203.0.113.1'], log: message => logs.push(message) });
+  t.after(() => transport.stop());
+  const client = connectClient(Number(new URL(transport.env.HTTPS_PROXY).port), 'opencode.ai:443');
+  assert.match((await once(client, 'data'))[0].toString(), /200 Connection Established/);
+  client.destroy();
+  assert.deepEqual(attempts.map(a => [a.host, a.family ?? null]), [['203.0.113.1', null], ['opencode.ai', 6], ['opencode.ai', null]]);
+});
+
 
 function connectClient(port, target) {
   const client = net.createConnection({ port, host: '127.0.0.1' });

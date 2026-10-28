@@ -88,6 +88,8 @@ function render() {
   $('restart').disabled = !!(pendingAction || state.actionBusy);
   $('proxy').disabled = !!(pendingAction || state.actionBusy || state.configSearch?.running || state.probe?.running || !['ready', 'error'].includes(state.phase));
   $('proxy').checked = state.useSystemProxy === true;
+  if (document.activeElement !== $('gateway-ips')) $('gateway-ips').value = (state.gatewayIPs || []).join(', ');
+  $('cache-hours').value = String(state.cacheHours || 8);
   $('service-text').textContent = window.OWActivity.activityText(state.activity?.[0]) || state.message || '正在启动隔离模型服务';
   $('service-dot').className = 'dot' + (state.phase === 'error' ? ' error' : '');
   $('app-version').textContent = state.appVersion ? `BuddyBridge v${state.appVersion}` : 'BuddyBridge';
@@ -112,6 +114,11 @@ async function run(name, value) {
     if (name === 'probe' && response.result.message) feedback(response.result.message);
     if (name === 'update-runtime') feedback(response.result.changed ? `OpenCode 已更新至 ${response.result.version}，仅检测需要更新结果的模型。` : `OpenCode ${response.result.version} 已是最新，无需更新。`);
     if (name === 'selection') { state.excludedModels = response.result.excludedModels; feedback('选择已保存，点击导入 WorkBuddy 后生效。'); }
+    if (name === 'prefs') {
+      state.gatewayIPs = response.result.gatewayIPs; state.cacheHours = response.result.cacheHours;
+      $('gateway-ips').value = (state.gatewayIPs || []).join(', ');
+      feedback(state.gatewayIPs?.length ? `设置已保存：优选 IP ${state.gatewayIPs.join('、')}（直连已启用，服务重启中）` : '设置已保存：已清除优选 IP，恢复自动链路。');
+    }
     if (name === 'import') {
       const r = response.result;
       if (r.canceled) { feedback('已取消导入，配置未更改。'); return; }
@@ -124,6 +131,9 @@ async function run(name, value) {
 function feedback(text, error = false) { $('feedback').textContent = text; $('feedback').className = error ? 'error' : ''; $('feedback').hidden = false; }
 for (const action of ['refresh', 'probe', 'import', 'restart', 'update-runtime']) $(action).onclick = () => run(action);
 $('proxy').onchange = () => run('system-proxy', $('proxy').checked);
+$('gateway-ips').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('gateway-ips').onchange = () => run('prefs', { gatewayIPs: $('gateway-ips').value });
+$('cache-hours').onchange = () => run('prefs', { cacheHours: Number($('cache-hours').value) });
 $('check-update').onclick = () => { $('check-update').disabled = true; window.buddy.checkUpdate().catch(() => {}).finally(() => { $('check-update').disabled = false; }); };
 $('contact-card').onclick = () => { $('card-overlay').hidden = false; };
 $('card-overlay').onclick = () => { $('card-overlay').hidden = true; };
