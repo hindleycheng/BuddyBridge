@@ -19,7 +19,7 @@ export async function validateFoundConfig(file) {
   const entries = Array.isArray(document) ? document : document.models;
   const identified = entries.some(m => m && (m.buddyBridgeOwner === 'buddy-bridge-v1' ||
     (m.vendor === 'Custom' && typeof m.id === 'string' && typeof m.url === 'string' && typeof m.apiKey === 'string')));
-  const namedDirectory = path.dirname(file).split(/[\\/]/).some(part => /^\.?workbuddy$/i.test(part));
+  const namedDirectory = path.dirname(file).split(/[\\/]/).some(part => /^\.?workbuddy(-ai)?$/i.test(part));
   if (!identified && !namedDirectory) throw new Error('无法确认此文件属于 WorkBuddy，请手动选择');
   return file;
 }
@@ -119,13 +119,13 @@ async function findHiddenConfigs(roots, signal, validate) {
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
       const child = path.join(dir, entry.name);
-      if (entry.name.toLowerCase() === '.workbuddy') {
+      if (/^\.?workbuddy(-ai)?$/i.test(entry.name)) {
         try { found.push(await validate(path.join(child, 'models.json'))); } catch {}
       }
       // Dependency stores and OS internals are not relocated WorkBuddy user data.
       if (!['node_modules', '.git', 'Windows', '$Recycle.Bin', 'System Volume Information'].includes(entry.name)) pending.push(child);
     }
-    if (path.basename(dir).toLowerCase() === '.workbuddy') {
+    if (/^\.?workbuddy(-ai)?$/i.test(path.basename(dir))) {
       try { found.push(await validate(path.join(dir, 'models.json'))); } catch {}
     }
   }

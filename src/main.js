@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { resolveModelsFile, validateModelsFile } from './workbuddy-config.js';
+import { resolveModelsFile, validateModelsFile, resolveIntlModelsFile } from './workbuddy-config.js';
 import { searchConfig, windowsSearchRoots } from './config-finder.js';
 import { dataDirectory } from './platform.js';
 import { randomBytes } from 'node:crypto';
@@ -75,10 +75,19 @@ const attachTranslator = runtime => {
   return runtime;
 };
 let syncWrites = Promise.resolve();
+// WorkBuddy 国际版（WorkBuddy AI，数据目录 .workbuddy-ai）随行同步：配置存在时与国内版一起
+// 导入和清理，格式与国内版一致；不存在时跳过，绝不主动创建。切换/手动选择配置仅作用于国内版。
+let intlModelsFile = null;
+async function refreshIntlTarget() {
+  intlModelsFile = await resolveIntlModelsFile();
+  update({ intlModelsFile });
+  return intlModelsFile;
+}
 let modelsFile = process.platform === 'win32'
   ? await resolveModelsFile({ saved: settings.workBuddyModelsFile })
   : process.env.BUDDY_MODELS_FILE || path.join(os.homedir(), '.workbuddy/models.json');
 update({ modelsFile });
+await refreshIntlTarget();
 
 // DeepSeek Harness ride-along sync: when its plain-text patch layer exists, publishing
 // models also refreshes the `buddybridge` provider there (hot-reloaded by DSH, no restart).
@@ -103,8 +112,21 @@ function syncPublished(published = publishedModels().filter(m => !(settings.excl
       catch (e) { dshSync = { error: e.message }; }
       update({ dsh: { available: true, sync: { ...dshSync, time: new Date().toISOString() } } });
     }
+    // 国际版随行同步：仅当配置已存在、且与国内版目标不是同一文件时写入，失败不影响国内版导入结果。
+    let intlSync;
+    const sameTarget = process.platform === 'win32'
+      ? !!modelsFile && intlModelsFile?.toLowerCase() === modelsFile.toLowerCase()
+      : intlModelsFile === modelsFile;
+    if (intlModelsFile && !sameTarget && process.env.BUDDY_NO_SYNC !== '1') {
+      try { intlSync = await syncModels(intlModelsFile, published, `${endpoint}/chat/completions`, key, { allowEmpty: true, requireExisting: true }); }
+      catch (e) { intlSync = { error: e.message }; }
+      update({ intl: { modelsFile: intlModelsFile, sync: { ...intlSync, time: new Date().toISOString() } } });
+    }
     update({ sync: { ...sync, time: new Date().toISOString() } });
-    return dshSync ? { ...sync, dsh: dshSync } : sync;
+    const extras = {};
+    if (dshSync) extras.dsh = dshSync;
+    if (intlSync) extras.intl = intlSync;
+    return Object.keys(extras).length ? { ...sync, ...extras } : sync;
   });
   return syncWrites;
 }
@@ -369,6 +391,7 @@ async function selectModel(model, selected) {
 
 async function importModels(selectedFile) {
   if (stopping || probing || refreshing || configSearch || state.phase !== 'ready') throw new Error('请等待读取和检测完成后导入');
+  await refreshIntlTarget();
   if (selectedFile !== undefined) {
     await validateModelsFile(selectedFile);
     if (modelsFile && modelsFile !== selectedFile && await fs.stat(modelsFile).catch(e => { if (e.code === 'ENOENT') return null; throw e; })) {

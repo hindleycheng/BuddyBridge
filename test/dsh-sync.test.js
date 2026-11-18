@@ -114,6 +114,6 @@ test('syncDshProvider round trip: write, verify, clean up, with backup', async (
 
 test('missing patch file reports an actionable error and dshPaths respects overrides', () => {
   const root = '/nonexistent-dsh';
-  assert.deepEqual(dshPaths(root, 'web'), { home: root, profile: 'web', patch: `${root}/profiles/web/cordis.patch.yml`, credentials: `${root}/.credentials.yaml` });
+  assert.deepEqual(dshPaths(root, 'web'), { home: root, profile: 'web', patch: path.join(root, 'profiles', 'web', 'cordis.patch.yml'), credentials: path.join(root, '.credentials.yaml') });
   return assert.rejects(syncDshProvider({ patch: `${root}/p.yml`, credentials: `${root}/c.yaml` }, models, 'x', 'y'), /未找到 DeepSeek Harness/);
 });

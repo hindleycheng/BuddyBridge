@@ -32,7 +32,7 @@ async function fixture(t, catalog) {
     port = socket.address().port; await new Promise(resolve => socket.close(resolve));
     child = spawn(process.execPath, ['--loader', new URL('./fixtures/runtime-loader.mjs', import.meta.url).href, 'src/main.js'], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
-      env: { ...process.env, BUDDY_DATA_DIR: root, BUDDY_PORT: String(port), BUDDY_MODELS_FILE: path.join(root, 'models.json'), BUDDY_NO_SYNC: '1' },
+      env: { ...process.env, BUDDY_DATA_DIR: root, BUDDY_PORT: String(port), BUDDY_MODELS_FILE: path.join(root, 'models.json'), BUDDY_NO_SYNC: '1', BUDDY_NO_INTL_SYNC: '1' },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
     child.stdout.on('data', x => logs += x); child.stderr.on('data', x => logs += x);

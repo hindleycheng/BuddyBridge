@@ -136,7 +136,10 @@ async function trayAction(name) {
   } catch (e) { await dialog.showMessageBox({ type: 'error', title: 'BuddyBridge', message: '操作失败', detail: e.message }); }
 }
 function importMessage(result) {
-  return result.changed === false ? `WorkBuddy 配置已是最新，共 ${result.count} 个模型，无需重复写入。` : `已将 ${result.count} 个可用模型导入 WorkBuddy。`;
+  const base = result.changed === false ? `WorkBuddy 配置已是最新，共 ${result.count} 个模型，无需重复写入。` : `已将 ${result.count} 个可用模型导入 WorkBuddy。`;
+  const intl = result.intl ? (result.intl.error ? `\n国际版同步失败：${result.intl.error}` : `\n国际版（WorkBuddy AI）已同步 ${result.intl.count} 个模型。`) : '';
+  const dsh = result.dsh ? (result.dsh.error ? `\nDeepSeek Harness 同步失败：${result.dsh.error}` : `\nDeepSeek Harness 已同步 ${result.dsh.count} 个模型。`) : '';
+  return base + intl + dsh;
 }
 async function checkUpdate(manual) {
   const current = app.getVersion();
