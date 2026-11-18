@@ -59,39 +59,71 @@ function ourRules(document) {
   return Array.isArray(rules) ? rules : [];
 }
 
-function mergeRules(document, models) {
+// The provider declaration carries the endpoint and the API key; the manual rules only
+// describe model capabilities. ZCode rejects unknown keys inside providerRules[].config,
+// so a personal provider may only hold api/access (no builtinModelIds — that belongs to
+// the built-in template schema).
+function providerRule(baseURL, apiKey) {
+  return {
+    providerId: ZCODE_PROVIDER,
+    providerName: 'BuddyBridge (OpenCode Free)',
+    config: {
+      api: { type: 'openai-chat-completions', baseUrl: baseURL },
+      access: { type: 'api-key', apiKey },
+    },
+  };
+}
+
+function ourProviderRules(document) {
+  const rules = document?.config?.providerConfigRules?.providerRules;
+  return Array.isArray(rules) ? rules : [];
+}
+
+function mergeRules(document, models, baseURL, apiKey) {
   const kept = ourRules(document).filter(rule => rule?.providerId !== ZCODE_PROVIDER);
+  const keptProviders = ourProviderRules(document).filter(rule => rule?.providerId !== ZCODE_PROVIDER);
   const entries = models.map(manualRule);
   const next = {
     schemaVersion: typeof document?.schemaVersion === 'number' ? document.schemaVersion : SCHEMA_VERSION,
     config: {
       ...(document?.config || {}),
-      providerConfigRules: { ...(document?.config?.providerConfigRules || {}), providerRules: document?.config?.providerConfigRules?.providerRules || [] },
+      providerConfigRules: { ...(document?.config?.providerConfigRules || {}), providerRules: [...keptProviders, providerRule(baseURL, apiKey)] },
       modelConfigRules: {
         ...(document?.config?.modelConfigRules || {}),
         manualProviderModelRules: [...kept, ...entries],
       },
     },
   };
-  // providerOrder/defaultModelSelection stay untouched when present.
-  if (document?.providerOrder !== undefined) next.providerOrder = document.providerOrder;
-  if (document?.defaultModelSelection !== undefined) next.defaultModelSelection = document.defaultModelSelection;
+  // providerOrder/defaultModelSelection live inside config; keep the user's own entries.
+  const order = document?.config?.providerOrder;
+  if (Array.isArray(order)) next.config.providerOrder = [...order.filter(id => id !== ZCODE_PROVIDER), ZCODE_PROVIDER];
+  const selection = document?.config?.defaultModelSelection;
+  if (selection && selection.providerId === ZCODE_PROVIDER) next.config.defaultModelSelection = selection;
   return { document: next, changed: JSON.stringify(next) !== JSON.stringify(document) };
 }
 
 function removeRules(document) {
   const kept = ourRules(document).filter(rule => rule?.providerId !== ZCODE_PROVIDER);
-  if (kept.length === ourRules(document).length) return { document, changed: false };
-  return {
-    document: {
-      ...document,
-      config: {
-        ...(document?.config || {}),
-        modelConfigRules: { ...(document?.config?.modelConfigRules || {}), manualProviderModelRules: kept },
-      },
+  const keptProviders = ourProviderRules(document).filter(rule => rule?.providerId !== ZCODE_PROVIDER);
+  const order = document?.config?.providerOrder;
+  const nextOrder = Array.isArray(order) ? order.filter(id => id !== ZCODE_PROVIDER) : undefined;
+  const selection = document?.config?.defaultModelSelection;
+  const changed = kept.length !== ourRules(document).length
+    || keptProviders.length !== ourProviderRules(document).length
+    || (nextOrder && nextOrder.length !== order.length)
+    || (selection && selection.providerId === ZCODE_PROVIDER);
+  if (!changed) return { document, changed: false };
+  const next = {
+    ...document,
+    config: {
+      ...(document?.config || {}),
+      providerConfigRules: { ...(document?.config?.providerConfigRules || {}), providerRules: keptProviders },
+      modelConfigRules: { ...(document?.config?.modelConfigRules || {}), manualProviderModelRules: kept },
     },
-    changed: true,
   };
+  if (nextOrder) next.config.providerOrder = nextOrder;
+  if (selection && selection.providerId === ZCODE_PROVIDER) delete next.config.defaultModelSelection;
+  return { document: next, changed: true };
 }
 
 export async function syncZcodeProviders(file, models, baseURL, apiKey) {
@@ -101,14 +133,26 @@ export async function syncZcodeProviders(file, models, baseURL, apiKey) {
     if (e.code === 'ENOENT') throw new Error('未找到 ZCode 配置（~/.zcode/v2/provider_config.json）；请先安装并启动一次 ZCode');
     throw new Error('ZCode 配置不是有效的 JSON，已中止写入：' + e.message);
   }
-  const { document: merged, changed } = models.length ? mergeRules(old, models.map(m => ({ ...m, baseURL, apiKey }))) : removeRules(old);
+  const { document: merged, changed } = models.length ? mergeRules(old, models, baseURL, apiKey) : removeRules(old);
   if (!changed) return { changed: false, count: models.length };
   const backup = `${file}.buddybridge-${Date.now()}.bak`;
   await fs.writeFile(backup, JSON.stringify(old, null, 2), { flag: 'wx' }).catch(e => {
     if (e.code !== 'EEXIST') throw e;
   });
   await atomicWrite(file, JSON.stringify(merged, null, 2) + '\n');
+  await pruneBackups(file);
   return { changed: true, count: models.length, backup };
+}
+
+// Keep only the most recent backups: repeated imports would otherwise pile up files.
+const BACKUP_LIMIT = 5;
+async function pruneBackups(file) {
+  const dir = path.dirname(file);
+  const base = path.basename(file) + '.buddybridge-';
+  const names = (await fs.readdir(dir).catch(() => [])).filter(name => name.startsWith(base) && name.endsWith('.bak')).sort();
+  for (const name of names.slice(0, Math.max(0, names.length - BACKUP_LIMIT))) {
+    await fs.unlink(path.join(dir, name)).catch(() => {});
+  }
 }
 
 // Best-effort availability probe: the config dir existing means ZCode has been installed and

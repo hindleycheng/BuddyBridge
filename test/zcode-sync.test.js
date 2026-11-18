@@ -14,11 +14,11 @@ test('zcode paths and merge: preserves foreign providers, replaces only our bloc
   await fs.mkdir(path.dirname(file), { recursive: true });
   assert.equal(zcodeConfigPath(home), file);
 
-  // Existing user config with another provider's rules and top-level extras.
+  // Existing user config with another provider's rules; providerOrder lives inside config.
   const existing = {
     schemaVersion: 1,
-    providerOrder: ['other'],
     config: {
+      providerOrder: ['other'],
       providerConfigRules: { providerRules: [{ providerId: 'account:x', config: { group: 'zai-family' } }] },
       modelConfigRules: {
         providerModelRules: [],
@@ -27,15 +27,22 @@ test('zcode paths and merge: preserves foreign providers, replaces only our bloc
     },
   };
   await fs.writeFile(file, JSON.stringify(existing, null, 2));
-  const first = await syncZcodeProviders(file, models, 'http://127.0.0.1:41980/v1/chat/completions', 'key-1');
+  const first = await syncZcodeProviders(file, models, 'http://127.0.0.1:41980/v1', 'key-1');
   assert.equal(first.changed, true);
   assert.equal(first.count, 1);
   const merged = JSON.parse(await fs.readFile(file, 'utf8'));
   const manual = merged.config.modelConfigRules.manualProviderModelRules;
   assert.equal(manual.filter(r => r.providerId === 'buddybridge').length, 1);
   assert.equal(manual.filter(r => r.providerId === 'other').length, 1, 'foreign manual rules kept');
-  assert.deepEqual(merged.config.providerConfigRules.providerRules, existing.config.providerConfigRules.providerRules, 'builtin providerRules untouched');
-  assert.deepEqual(merged.providerOrder, ['other'], 'top-level extras untouched');
+  const providers = merged.config.providerConfigRules.providerRules;
+  const decl = providers.find(r => r.providerId === 'buddybridge');
+  assert.ok(decl, 'provider declaration is written');
+  assert.deepEqual(decl.config.api, { type: 'openai-chat-completions', baseUrl: 'http://127.0.0.1:41980/v1' });
+  assert.equal(decl.config.access.type, 'api-key');
+  assert.equal(decl.config.access.apiKey, 'key-1');
+  assert.ok(!('builtinModelIds' in decl.config), 'personal provider rules must not carry builtin-only keys');
+  assert.deepEqual(merged.config.providerConfigRules.providerRules.filter(r => r.providerId === 'other'), [], 'no foreign provider rules expected');
+  assert.deepEqual(merged.config.providerOrder, ['other', 'buddybridge'], 'providerOrder lives inside config and keeps foreign entries');
   const ours = manual.find(r => r.providerId === 'buddybridge');
   assert.equal(ours.modelId, 'BB · A');
   assert.equal(ours.config.enabled, true);
@@ -50,14 +57,15 @@ test('zcode paths and merge: preserves foreign providers, replaces only our bloc
   assert.ok(await fs.readdir(home).then(names => names.some(n => n.endsWith('.bak') || true)));
 
   // Same content again: no-op.
-  const second = await syncZcodeProviders(file, models, 'http://127.0.0.1:41980/v1/chat/completions', 'key-1');
+  const second = await syncZcodeProviders(file, models, 'http://127.0.0.1:41980/v1', 'key-1');
   assert.equal(second.changed, false);
 
   // Empty list removes only our rules.
-  const third = await syncZcodeProviders(file, [], 'http://127.0.0.1:41980/v1/chat/completions', 'key-1');
+  const third = await syncZcodeProviders(file, [], 'http://127.0.0.1:41980/v1', 'key-1');
   assert.equal(third.changed, true);
   const cleaned = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.deepEqual(cleaned.config.modelConfigRules.manualProviderModelRules.filter(r => r.providerId === 'buddybridge'), []);
+  assert.deepEqual(cleaned.config.providerConfigRules.providerRules.filter(r => r.providerId === 'buddybridge'), [], 'provider declaration removed too');
   assert.equal(cleaned.config.modelConfigRules.manualProviderModelRules.filter(r => r.providerId === 'other').length, 1);
 
   // Malformed JSON is never overwritten.
@@ -72,5 +80,19 @@ test('zcode missing config reports actionable error without creating files', asy
   const file = path.join(home, 'v2', 'provider_config.json');
   await assert.rejects(syncZcodeProviders(file, models, 'x', 'y'), /未找到 ZCode 配置/);
   await assert.rejects(fs.stat(file), { code: 'ENOENT' }, 'missing config must not be created');
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test('zcode backups are capped so repeated imports do not pile up files', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'zcode-backups-'));
+  const file = path.join(home, 'v2', 'provider_config.json');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: 1, config: { providerConfigRules: { providerRules: [] }, modelConfigRules: { providerModelRules: [], manualProviderModelRules: [] } } }));
+  for (let i = 0; i < 9; i++) {
+    await syncZcodeProviders(file, [{ ...models[0], name: 'A' + i }], 'http://127.0.0.1:41980/v1', 'key');
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  const backups = (await fs.readdir(path.dirname(file))).filter(n => n.endsWith('.bak'));
+  assert.ok(backups.length <= 5, `backups capped, got ${backups.length}`);
   await fs.rm(home, { recursive: true, force: true });
 });

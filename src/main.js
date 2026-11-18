@@ -161,7 +161,7 @@ function syncPublished(published = publishedModels().filter(m => !(settings.excl
     // ZCode：manual provider rules 单文件合并写入，失败不影响其他目标。
     let zcodeSync;
     if (zcodeReady && process.env.BUDDY_NO_SYNC !== '1') {
-      try { zcodeSync = await syncZcodeProviders(zcodeFile, zcodeList, `${endpoint}/chat/completions`, key); }
+      try { zcodeSync = await syncZcodeProviders(zcodeFile, zcodeList, endpoint, key); }
       catch (e) { zcodeSync = { error: e.message }; }
       update({ zcode: { available: true, file: zcodeFile, sync: { ...zcodeSync, time: new Date().toISOString() } } });
     }
