@@ -60,7 +60,7 @@ function publish() {
     { label: '打开控制面板', click: showWindow }, { type: 'separator' },
     { label: '重新扫描免费模型', enabled: !busy, click: () => trayAction('refresh') },
     { label: '检测全部模型', enabled: !busy, click: () => trayAction('probe') },
-    { label: '导入 WorkBuddy', enabled: !busy, click: () => trayAction('import') },
+    { label: '导入模型到所选平台', enabled: !busy, click: () => trayAction('import') },
     ...(process.platform === 'win32' ? [{ label: '自动查找 WorkBuddy 配置…', enabled: !busy, click: () => trayAction('find-config') }, { label: '选择 WorkBuddy 配置…', enabled: !busy, click: () => trayAction('choose-config') }] : []),
     { label: '模型状态', submenu: (state.models || []).map(m => ({ label: `BB · ${m.name} · ${available.has(m.id) ? state.modelResults?.[m.id]?.chatOnly ? '可用 · 仅对话' : '可用' : state.pendingModels?.includes(m.id) || !state.modelResults?.[m.id] || state.modelResults?.[m.id]?.ok ? '待检测' : '不可用'}`, enabled: false })) },
     { type: 'separator' }, { label: '检查更新…', click: () => checkUpdate(true) }, { label: '退出 BuddyBridge', click: () => app.quit() },
@@ -136,7 +136,7 @@ async function trayAction(name) {
   } catch (e) { await dialog.showMessageBox({ type: 'error', title: 'BuddyBridge', message: '操作失败', detail: e.message }); }
 }
 function importMessage(result) {
-  const base = result.changed === false ? `WorkBuddy 配置已是最新，共 ${result.count} 个模型，无需重复写入。` : `已将 ${result.count} 个可用模型导入 WorkBuddy。`;
+  const base = result.changed === false ? `所选平台的配置已是最新，共 ${result.count} 个模型，无需重复写入。` : `已将 ${result.count} 个可用模型写入所选平台。`;
   const intl = result.intl ? (result.intl.error ? `\n国际版同步失败：${result.intl.error}` : `\n国际版（WorkBuddy AI）已同步 ${result.intl.count} 个模型。`) : '';
   const dsh = result.dsh ? (result.dsh.error ? `\nDeepSeek Harness 同步失败：${result.dsh.error}` : `\nDeepSeek Harness 已同步 ${result.dsh.count} 个模型。`) : '';
   return base + intl + dsh;

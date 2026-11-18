@@ -8,3 +8,6 @@ release/
 .scratch/
 .mimosa/
 release2/
+release-v130/
+bb-build/
+*.tmp/

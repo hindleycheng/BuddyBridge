@@ -75,8 +75,8 @@ const attachTranslator = runtime => {
   return runtime;
 };
 let syncWrites = Promise.resolve();
-// WorkBuddy 国际版（WorkBuddy AI，数据目录 .workbuddy-ai）随行同步：配置存在时与国内版一起
-// 导入和清理，格式与国内版一致；不存在时跳过，绝不主动创建。切换/手动选择配置仅作用于国内版。
+// WorkBuddy 国际版（WorkBuddy AI，数据目录 .workbuddy-ai）使用与国内版一致的 models.json 格式；
+// 只有该文件已存在时才可写入，绝不主动创建。切换/手动选择配置仅作用于国内版。
 let intlModelsFile = null;
 async function refreshIntlTarget() {
   intlModelsFile = await resolveIntlModelsFile();
@@ -95,34 +95,62 @@ const dsh = dshPaths();
 const dshAvailable = await fs.stat(dsh.patch).then(() => true, () => false);
 if (dshAvailable) update({ dsh: { available: true } });
 
+// 写入目标由用户在界面上勾选：domestic = WorkBuddy 国内版，intl = WorkBuddy 国际版，
+// dsh = DeepSeek Harness。未保存过设置时全部开启，保持旧行为。关闭的目标会被写成空列表，
+// 从而移除本应用此前导入的条目（清理是幂等的，不会动用户自己的模型）。
+const TARGET_KEYS = ['domestic', 'intl', 'dsh'];
+function targetSettings() {
+  const saved = settings.targets || {};
+  return Object.fromEntries(TARGET_KEYS.map(key => [key, saved[key] !== false]));
+}
+function targetState() {
+  const enabled = targetSettings();
+  const sameFile = process.platform === 'win32'
+    ? !!modelsFile && intlModelsFile?.toLowerCase() === modelsFile.toLowerCase()
+    : intlModelsFile === modelsFile;
+  return {
+    domestic: { enabled: enabled.domestic, available: !!modelsFile, file: modelsFile || null },
+    intl: { enabled: enabled.intl, available: !!intlModelsFile && !sameFile, file: intlModelsFile || null, sameAsDomestic: sameFile },
+    dsh: { enabled: enabled.dsh, available: dshAvailable, file: dshAvailable ? dsh.patch : null },
+  };
+}
+update({ targets: targetState() });
+
 function syncPublished(published = publishedModels().filter(m => !(settings.excludedModels || []).includes(m.id))) {
   syncWrites = syncWrites.then(async () => {
+    const targets = targetSettings();
+    // A disabled target receives an empty list: that removes our entries without touching the user's own.
+    const domesticList = targets.domestic ? published : [];
+    const dshList = targets.dsh ? published : [];
+    const intlList = targets.intl ? published : [];
     let sync;
     if (process.env.BUDDY_NO_SYNC === '1') sync = { skipped: true, count: published.length };
+    else if (!modelsFile) sync = targets.domestic
+      ? { error: '未找到有效的 WorkBuddy 配置，请点击导入并选择 models.json；首次使用请先在 WorkBuddy 保存一个自定义模型。' }
+      : { skipped: true, count: 0 };
     else {
       try {
-        if (!modelsFile) throw new Error('未找到有效的 WorkBuddy 配置，请点击导入并选择 models.json；首次使用请先在 WorkBuddy 保存一个自定义模型。');
-        sync = await syncModels(modelsFile, published, `${endpoint}/chat/completions`, key, { allowEmpty: true, requireExisting: process.platform === 'win32' });
+        sync = await syncModels(modelsFile, domesticList, `${endpoint}/chat/completions`, key, { allowEmpty: true, requireExisting: process.platform === 'win32' });
       }
       catch (e) { sync = { error: e.message }; }
     }
     let dshSync;
     if (dshAvailable && process.env.BUDDY_NO_SYNC !== '1') {
-      try { dshSync = await syncDshProvider(dsh, published, endpoint, key); }
+      try { dshSync = await syncDshProvider(dsh, dshList, endpoint, key); }
       catch (e) { dshSync = { error: e.message }; }
       update({ dsh: { available: true, sync: { ...dshSync, time: new Date().toISOString() } } });
     }
-    // 国际版随行同步：仅当配置已存在、且与国内版目标不是同一文件时写入，失败不影响国内版导入结果。
+    // 国际版与国内版指向同一文件时不重复写入。
     let intlSync;
     const sameTarget = process.platform === 'win32'
       ? !!modelsFile && intlModelsFile?.toLowerCase() === modelsFile.toLowerCase()
       : intlModelsFile === modelsFile;
     if (intlModelsFile && !sameTarget && process.env.BUDDY_NO_SYNC !== '1') {
-      try { intlSync = await syncModels(intlModelsFile, published, `${endpoint}/chat/completions`, key, { allowEmpty: true, requireExisting: true }); }
+      try { intlSync = await syncModels(intlModelsFile, intlList, `${endpoint}/chat/completions`, key, { allowEmpty: true, requireExisting: true }); }
       catch (e) { intlSync = { error: e.message }; }
       update({ intl: { modelsFile: intlModelsFile, sync: { ...intlSync, time: new Date().toISOString() } } });
     }
-    update({ sync: { ...sync, time: new Date().toISOString() } });
+    update({ sync: { ...sync, time: new Date().toISOString() }, targets: targetState() });
     const extras = {};
     if (dshSync) extras.dsh = dshSync;
     if (intlSync) extras.intl = intlSync;
@@ -342,7 +370,7 @@ async function setSystemProxy(enabled) {
 async function setPrefs(prefs = {}) {
   if (refreshing || probing || stopping || configSearch) throw new Error('请等待读取和检测完成');
   const next = { ...settings };
-  let restart = false;
+  let restart = false, applyTargets = false;
   if (prefs.gatewayIPs !== undefined) {
     const { ips, invalid } = normalizeGatewayIPs(prefs.gatewayIPs);
     if (invalid.length) throw new Error(`优选 IP 格式不正确：${invalid.join('、')}`);
@@ -353,11 +381,23 @@ async function setPrefs(prefs = {}) {
     if (![8, 24, 72].includes(Number(prefs.cacheHours))) throw new Error('缓存时长仅支持 8/24/72 小时');
     next.cacheHours = Number(prefs.cacheHours);
   }
+  if (prefs.targets !== undefined) {
+    if (!prefs.targets || typeof prefs.targets !== 'object') throw new Error('写入目标格式不正确');
+    const merged = { ...(settings.targets || {}) };
+    for (const key of TARGET_KEYS) {
+      if (typeof prefs.targets[key] !== 'boolean') continue;
+      if (merged[key] !== prefs.targets[key]) applyTargets = true;
+      merged[key] = prefs.targets[key];
+    }
+    next.targets = merged;
+  }
   settings = next;
   await atomicWrite(settingsFile, JSON.stringify(next));
   if (restart) await refresh(true);
-  update({ gatewayIPs, cacheHours: cacheHours() });
-  return { gatewayIPs, cacheHours: cacheHours() };
+  // 目标变化立即生效：开启的目标写入，关闭的目标清理，不必等下一次手动导入。
+  if (applyTargets) await syncPublished();
+  update({ gatewayIPs, cacheHours: cacheHours(), targets: targetState() });
+  return { gatewayIPs, cacheHours: cacheHours(), targets: targetState() };
 }
 let configSearch;
 async function findConfig(afterProbe = false) {

@@ -81,6 +81,27 @@ function fillDetails(body, model) {
   if (r.error) add(r.error, 'error-text');
   add('最近更新：' + (r.time ? new Date(r.time).toLocaleString() : '尚未检测'));
 }
+const TARGET_DEFS = [
+  ['target-domestic', 'domestic', 'WorkBuddy', '未找到 WorkBuddy 配置：请先导入并选择 models.json，或先在 WorkBuddy 保存一个自定义模型'],
+  ['target-intl', 'intl', '国际版', '未检测到国际版配置：请先在国际版保存一个自定义模型'],
+  ['target-dsh', 'dsh', 'DeepSeek Harness', '未检测到 ~/.dsh：请先安装并启动一次 DeepSeek Harness'],
+];
+function renderTargets(busy) {
+  const targets = state.targets || {};
+  const missing = [];
+  for (const [id, key, name, tip] of TARGET_DEFS) {
+    const info = targets[key] || {};
+    const box = $(id);
+    const unavailable = info.available === false;
+    const merged = key === 'intl' && info.sameAsDomestic === true;
+    box.checked = info.enabled !== false;
+    box.disabled = !!busy || unavailable || merged;
+    box.parentElement.classList.toggle('unavailable', unavailable || merged);
+    box.parentElement.title = merged ? '与 WorkBuddy 配置为同一文件，写入一次即可' : unavailable ? tip : '';
+    if (unavailable || merged) missing.push(name);
+  }
+  $('targets-note').textContent = missing.length ? `未检测到：${missing.join('、')}` : '';
+}
 function render() {
   const busy = pendingAction || state.actionBusy || state.configSearch?.running || state.probe?.running || state.phase !== 'ready';
   for (const id of ['refresh', 'probe', 'import', 'proxy', 'update-runtime']) $(id).disabled = !!busy;
@@ -96,13 +117,14 @@ function render() {
   $('discovered').textContent = state.models?.length || 0;
   $('available').textContent = state.availableModels?.length || 0;
   $('pending').textContent = state.models?.filter(m => rank(m) === 1).length || 0;
-  for (const [id, title, active] of [['update-runtime', '更新 OpenCode', state.actionBusy === 'update-runtime'], ['refresh', '读取免费模型', state.actionBusy === 'refresh'], ['probe', '检测全部', state.probe?.running], ['import', '导入 WorkBuddy', state.actionBusy === 'import']]) {
+  for (const [id, title, active] of [['update-runtime', '更新 OpenCode', state.actionBusy === 'update-runtime'], ['refresh', '读取免费模型', state.actionBusy === 'refresh'], ['probe', '检测全部', state.probe?.running], ['import', '导入模型', state.actionBusy === 'import']]) {
     $(id).replaceChildren(); if (active) $(id).append(element('span', 'spinner'));
     $(id).append(document.createTextNode(active ? id === 'update-runtime' ? '正在更新…' : id === 'import' ? '正在导入…' : id === 'refresh' ? '正在读取…' : '正在检测…' : title));
   }
+  renderTargets(busy);
   const sync = state.sync;
-  const base = (state.configSearch?.running ? 'OpenCode 正在只读查找 WorkBuddy 配置…' : state.configSearch?.candidates?.length > 1 && !state.modelsFile ? '已找到配置文件，点击导入 WorkBuddy 使用最近访问的一份。' : '') || sync?.error || (sync?.time ? `已导入 ${sync.count ?? 0} 个模型 · 再次检测后需点击导入 WorkBuddy 更新` : '启动时仅导入有效缓存；检测后需手动导入 WorkBuddy');
-  $('sync').textContent = base + (state.dsh?.available ? ` · DSH ${state.dsh.sync?.error ? '同步失败' : `${state.dsh.sync?.count ?? 0} 个模型`}` : '') + (state.intl?.modelsFile ? ` · 国际版 ${state.intl.sync?.error ? '同步失败' : `${state.intl.sync?.count ?? 0} 个模型`}` : '');
+  const base = (state.configSearch?.running ? 'OpenCode 正在只读查找 WorkBuddy 配置…' : state.configSearch?.candidates?.length > 1 && !state.modelsFile ? '已找到配置文件，点击导入模型使用最近访问的一份。' : '') || sync?.error || (sync?.time ? `已导入 ${sync.count ?? 0} 个模型 · 再次检测后需点击导入模型更新` : '启动时仅导入有效缓存；检测后需手动导入');
+  $('sync').textContent = base + (state.dsh?.available ? ` · DSH ${state.targets?.dsh?.enabled === false ? '已关闭' : state.dsh.sync?.error ? '同步失败' : `${state.dsh.sync?.count ?? 0} 个模型`}` : '') + (state.intl?.modelsFile ? ` · 国际版 ${state.targets?.intl?.enabled === false ? '已关闭' : state.intl.sync?.error ? '同步失败' : `${state.intl.sync?.count ?? 0} 个模型`}` : '');
   renderModels();
 }
 async function run(name, value) {
@@ -113,18 +135,27 @@ async function run(name, value) {
     if (name === 'probe' && response.result.canceled) feedback('已取消检测，继续冷却。');
     if (name === 'probe' && response.result.message) feedback(response.result.message);
     if (name === 'update-runtime') feedback(response.result.changed ? `OpenCode 已更新至 ${response.result.version}，仅检测需要更新结果的模型。` : `OpenCode ${response.result.version} 已是最新，无需更新。`);
-    if (name === 'selection') { state.excludedModels = response.result.excludedModels; feedback('选择已保存，点击导入 WorkBuddy 后生效。'); }
+    if (name === 'selection') { state.excludedModels = response.result.excludedModels; feedback('选择已保存，点击导入模型后生效。'); }
     if (name === 'prefs') {
-      state.gatewayIPs = response.result.gatewayIPs; state.cacheHours = response.result.cacheHours;
+      const r = response.result;
+      state.gatewayIPs = r.gatewayIPs; state.cacheHours = r.cacheHours; state.targets = r.targets || state.targets;
       $('gateway-ips').value = (state.gatewayIPs || []).join(', ');
-      feedback(state.gatewayIPs?.length ? `设置已保存：优选 IP ${state.gatewayIPs.join('、')}（直连已启用，服务重启中）` : '设置已保存：已清除优选 IP，恢复自动链路。');
+      if (value && value.targets) {
+        const [key, on] = Object.entries(value.targets)[0] || [];
+        const name = (TARGET_DEFS.find(d => d[1] === key) || [])[2] || key;
+        feedback(on ? `已开启「${name}」写入，模型已同步到该平台。` : `已关闭「${name}」写入，并清理了此前导入到该平台的模型。`);
+      } else if (value && value.gatewayIPs !== undefined) {
+        feedback(state.gatewayIPs?.length ? `设置已保存：优选 IP ${state.gatewayIPs.join('、')}（直连已启用，服务重启中）` : '设置已保存：已清除优选 IP，恢复自动链路。');
+      } else {
+        feedback(`设置已保存：检测结果缓存 ${state.cacheHours} 小时。`);
+      }
     }
     if (name === 'import') {
       const r = response.result;
       if (r.canceled) { feedback('已取消导入，配置未更改。'); return; }
       const dshNote = r.dsh ? (r.dsh.error ? `；DeepSeek Harness 同步失败：${r.dsh.error}` : `；DeepSeek Harness 已同步 ${r.dsh.count} 个模型（DSH 内即可选择）`) : '';
       const intlNote = r.intl ? (r.intl.error ? `；国际版同步失败：${r.intl.error}` : `；国际版已同步 ${r.intl.count} 个模型`) : '';
-      feedback((r.changed === false ? `配置已是最新，共 ${r.count} 个模型，无需重复写入。` : `导入完成，已将 ${r.count} 个可用模型导入 WorkBuddy。`) + dshNote + intlNote);
+      feedback((r.changed === false ? `所选平台的配置已是最新，共 ${r.count} 个模型，无需重复写入。` : `导入完成，已将 ${r.count} 个可用模型写入所选平台。`) + dshNote + intlNote);
     }
   } catch (error) { feedback(error.message, true); }
   finally { pendingAction = false; render(); }
@@ -135,6 +166,7 @@ $('proxy').onchange = () => run('system-proxy', $('proxy').checked);
 $('gateway-ips').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
 $('gateway-ips').onchange = () => run('prefs', { gatewayIPs: $('gateway-ips').value });
 $('cache-hours').onchange = () => run('prefs', { cacheHours: Number($('cache-hours').value) });
+for (const [id, key] of TARGET_DEFS) $(id).onchange = () => run('prefs', { targets: { [key]: $(id).checked } });
 $('check-update').onclick = () => { $('check-update').disabled = true; window.buddy.checkUpdate().catch(() => {}).finally(() => { $('check-update').disabled = false; }); };
 $('contact-card').onclick = () => { $('card-overlay').hidden = false; };
 $('card-overlay').onclick = () => { $('card-overlay').hidden = true; };

@@ -26,6 +26,13 @@
     </div>
   </section>
   <div id="feedback" role="status" hidden></div>
+  <section class="targets" aria-label="写入目标">
+    <span class="targets-title">写入目标</span>
+    <label class="target"><input id="target-domestic" type="checkbox"> <span>WorkBuddy</span></label>
+    <label class="target"><input id="target-intl" type="checkbox"> <span>国际版</span></label>
+    <label class="target"><input id="target-dsh" type="checkbox"> <span>DeepSeek Harness</span></label>
+    <span id="targets-note" class="targets-note"></span>
+  </section>
   <section class="listhead"><h2>免费模型</h2><p id="sync">启动时仅导入有效缓存；检测后需手动导入 WorkBuddy</p></section>
   <section id="models" aria-label="模型列表"></section>
   <p class="note">启动时不全量检测；成功结果缓存 8 小时。手动检测会使用免费额度，不代表完整工具流程已验证。耗时为完整请求用时，非首字延迟。不可用模型仅在本窗口保留，不供 WorkBuddy 使用；剩余额度暂不可查询。</p>
