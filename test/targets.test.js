@@ -30,7 +30,7 @@ test('write targets: user selection gates each platform and disabling cleans onl
   await new Promise(resolve => socket.close(resolve));
   const child = spawn(process.execPath, ['--loader', new URL('./fixtures/runtime-loader.mjs', import.meta.url).href, 'src/main.js'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
-    env: { ...process.env, BUDDY_DATA_DIR: root, BUDDY_PORT: String(port), BUDDY_MODELS_FILE: config, BUDDY_NO_SYNC: '0', BUDDY_DSH_HOME: dshHome, BUDDY_DSH_PROFILE: 'desktop', BUDDY_INTL_MODELS_FILE: intlFile },
+    env: { ...process.env, BUDDY_DATA_DIR: root, BUDDY_PORT: String(port), BUDDY_MODELS_FILE: config, BUDDY_NO_SYNC: '0', BUDDY_DSH_HOME: dshHome, BUDDY_DSH_PROFILE: 'desktop', BUDDY_INTL_MODELS_FILE: intlFile, BUDDY_ZCODE_HOME: path.join(root, 'zcode-absent') },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let logs = ''; child.stdout.on('data', x => logs += x); child.stderr.on('data', x => logs += x);

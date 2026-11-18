@@ -29,10 +29,11 @@ npm run build:win    # 打包 Windows x64
 4. 关闭窗口 = 后台运行：窗口关闭后 macOS 的 Dock 图标一并收起、只保留状态栏图标（首次会有气泡提示），点击状态栏图标重新打开；Windows 最小化到托盘。从托盘退出才会真正退出（并清理本应用导入的模型）。
 5. 模型名称为 `BB · ` 加 OpenCode 原名；本地服务端口默认 41980（可用 `BUDDY_PORT` 覆盖）。
 6. 网络与检测：默认直连（无 IPv6 的机器自动回退 IPv4 解析）。部分地区国外模型会显示"访问受限"——这是模型级限制，仅该模型不可用，国产模型通常可直连使用；需要访问受限模型或遇到网关级拒绝（提示"网关拒绝或限制了请求"）时，再打开"使用系统代理"并让代理出口在允许地区（代理不可达时应用会明确报错；开启代理后若全部超时，按提示关闭代理重试）。
-7. 写入目标（勾选决定去哪）：主界面「写入目标」一栏可分别勾选 **WorkBuddy**（国内版）、**国际版**、**DeepSeek Harness**，只有勾选的平台会被写入，取消勾选会立即清理该平台上本应用导入的条目（不会动你自己的模型）。未检测到配置的平台显示为灰色不可勾选。默认三个全部开启。
-8. WorkBuddy 国际版（WorkBuddy AI）：检测到 `~/.workbuddy-ai/models.json`（需先在国际版保存过一个自定义模型）后即可作为写入目标；国际版内模型名同样是 `BB ·` 前缀，退出时一并清理，不存在时绝不创建文件。可用 `BUDDY_NO_INTL_SYNC=1` 强制关闭，`BUDDY_INTL_MODELS_FILE` 指定其他位置。自动查找配置同样能识别 `.workbuddy-ai` 目录。
-9. DeepSeek Harness：检测到 `~/.dsh`（DSH）后即可作为写入目标。模型写入 DSH 的自定义提供商 `buddybridge`（OpenAI 兼容接口，DSH 热生效无需重启，模型选择器直接可选）；退出 BuddyBridge 时自动移除该提供商和对应密钥，不影响 DSH 里的其他提供商。密钥保存在 `~/.dsh/.credentials.yaml` 的 `BUDDY_BRIDGE_API_KEY`。可用 `BUDDY_DSH_HOME` / `BUDDY_DSH_PROFILE` 环境变量更改目标。
-10. 直连加速与缓存（底栏设置）：
+7. 写入目标（勾选决定去哪）：主界面「写入目标」一栏可分别勾选 **WorkBuddy**（国内版）、**国际版**、**DeepSeek Harness**、**ZCode**，只有勾选的平台会被写入，取消勾选会立即清理该平台上本应用导入的条目（不会动你自己的模型）。未检测到配置的平台显示为灰色不可勾选。默认全部开启。
+8. ZCode：检测到 `~/.zcode/v2/provider_config.json` 后即可作为写入目标。模型以「BuddyBridge」个人提供商写入（OpenAI 兼容接口指向本地服务，热加载无需重启），退出时只移除本提供商的条目，不影响其他提供商。写入遵循 ZCode 的个人配置 schema（手动模型规则为精简 properties 集）。
+9. WorkBuddy 国际版（WorkBuddy AI）：检测到 `~/.workbuddy-ai/models.json`（需先在国际版保存过一个自定义模型）后即可作为写入目标；国际版内模型名同样是 `BB ·` 前缀，退出时一并清理，不存在时绝不创建文件。可用 `BUDDY_NO_INTL_SYNC=1` 强制关闭，`BUDDY_INTL_MODELS_FILE` 指定其他位置。自动查找配置同样能识别 `.workbuddy-ai` 目录。
+10. DeepSeek Harness：检测到 `~/.dsh`（DSH）后即可作为写入目标。模型写入 DSH 的自定义提供商 `buddybridge`（OpenAI 兼容接口，DSH 热生效无需重启，模型选择器直接可选）；退出 BuddyBridge 时自动移除该提供商和对应密钥，不影响 DSH 里的其他提供商。密钥保存在 `~/.dsh/.credentials.yaml` 的 `BUDDY_BRIDGE_API_KEY`。可用 `BUDDY_DSH_HOME` / `BUDDY_DSH_PROFILE` 环境变量更改目标。
+11. 直连加速与缓存（底栏设置）：
    - **优选 IP**：用 CloudflareSpeedTest 等工具测出你家宽带到 Cloudflare 最快的 IP（晚高峰直连烂线路时尤其有效），填入底栏"优选IP"（逗号分隔，最多 8 个）。直连流量优先经这些边缘 IP 访问网关，失败自动回退自动链路；保存后服务自动重启生效。留空恢复默认。
    - **缓存时长**：检测结果默认缓存 8 小时，可改为 24/72 小时——白天网络好时测一次，管一整天，晚高峰无需重测。
 

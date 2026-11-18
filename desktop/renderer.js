@@ -85,6 +85,7 @@ const TARGET_DEFS = [
   ['target-domestic', 'domestic', 'WorkBuddy', '未找到 WorkBuddy 配置：请先导入并选择 models.json，或先在 WorkBuddy 保存一个自定义模型'],
   ['target-intl', 'intl', '国际版', '未检测到国际版配置：请先在国际版保存一个自定义模型'],
   ['target-dsh', 'dsh', 'DeepSeek Harness', '未检测到 ~/.dsh：请先安装并启动一次 DeepSeek Harness'],
+  ['target-zcode', 'zcode', 'ZCode', '未检测到 ZCode 配置：请先安装并启动一次 ZCode'],
 ];
 function renderTargets(busy) {
   const targets = state.targets || {};
@@ -124,7 +125,7 @@ function render() {
   renderTargets(busy);
   const sync = state.sync;
   const base = (state.configSearch?.running ? 'OpenCode 正在只读查找 WorkBuddy 配置…' : state.configSearch?.candidates?.length > 1 && !state.modelsFile ? '已找到配置文件，点击导入模型使用最近访问的一份。' : '') || sync?.error || (sync?.time ? `已导入 ${sync.count ?? 0} 个模型 · 再次检测后需点击导入模型更新` : '启动时仅导入有效缓存；检测后需手动导入');
-  $('sync').textContent = base + (state.dsh?.available ? ` · DSH ${state.targets?.dsh?.enabled === false ? '已关闭' : state.dsh.sync?.error ? '同步失败' : `${state.dsh.sync?.count ?? 0} 个模型`}` : '') + (state.intl?.modelsFile ? ` · 国际版 ${state.targets?.intl?.enabled === false ? '已关闭' : state.intl.sync?.error ? '同步失败' : `${state.intl.sync?.count ?? 0} 个模型`}` : '');
+  $('sync').textContent = base + (state.dsh?.available ? ` · DSH ${state.targets?.dsh?.enabled === false ? '已关闭' : state.dsh.sync?.error ? '同步失败' : `${state.dsh.sync?.count ?? 0} 个模型`}` : '') + (state.intl?.modelsFile ? ` · 国际版 ${state.targets?.intl?.enabled === false ? '已关闭' : state.intl.sync?.error ? '同步失败' : `${state.intl.sync?.count ?? 0} 个模型`}` : '') + (state.zcode?.available ? ` · ZCode ${state.targets?.zcode?.enabled === false ? '已关闭' : state.zcode.sync?.error ? '同步失败' : `${state.zcode.sync?.count ?? 0} 个模型`}` : '');
   renderModels();
 }
 async function run(name, value) {
@@ -155,7 +156,8 @@ async function run(name, value) {
       if (r.canceled) { feedback('已取消导入，配置未更改。'); return; }
       const dshNote = r.dsh ? (r.dsh.error ? `；DeepSeek Harness 同步失败：${r.dsh.error}` : `；DeepSeek Harness 已同步 ${r.dsh.count} 个模型（DSH 内即可选择）`) : '';
       const intlNote = r.intl ? (r.intl.error ? `；国际版同步失败：${r.intl.error}` : `；国际版已同步 ${r.intl.count} 个模型`) : '';
-      feedback((r.changed === false ? `所选平台的配置已是最新，共 ${r.count} 个模型，无需重复写入。` : `导入完成，已将 ${r.count} 个可用模型写入所选平台。`) + dshNote + intlNote);
+      const zcodeNote = r.zcode ? (r.zcode.error ? `；ZCode 同步失败：${r.zcode.error}` : `；ZCode 已同步 ${r.zcode.count} 个模型`) : '';
+      feedback((r.changed === false ? `所选平台的配置已是最新，共 ${r.count} 个模型，无需重复写入。` : `导入完成，已将 ${r.count} 个可用模型写入所选平台。`) + dshNote + intlNote + zcodeNote);
     }
   } catch (error) { feedback(error.message, true); }
   finally { pendingAction = false; render(); }

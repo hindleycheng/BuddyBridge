@@ -139,7 +139,8 @@ function importMessage(result) {
   const base = result.changed === false ? `所选平台的配置已是最新，共 ${result.count} 个模型，无需重复写入。` : `已将 ${result.count} 个可用模型写入所选平台。`;
   const intl = result.intl ? (result.intl.error ? `\n国际版同步失败：${result.intl.error}` : `\n国际版（WorkBuddy AI）已同步 ${result.intl.count} 个模型。`) : '';
   const dsh = result.dsh ? (result.dsh.error ? `\nDeepSeek Harness 同步失败：${result.dsh.error}` : `\nDeepSeek Harness 已同步 ${result.dsh.count} 个模型。`) : '';
-  return base + intl + dsh;
+  const zcode = result.zcode ? (result.zcode.error ? `\nZCode 同步失败：${result.zcode.error}` : `\nZCode 已同步 ${result.zcode.count} 个模型。`) : '';
+  return base + intl + dsh + zcode;
 }
 async function checkUpdate(manual) {
   const current = app.getVersion();

@@ -16,6 +16,7 @@ import { PROBE_TIMEOUT, probeBody, probeModel, probeFailure, formatUnsupported }
 import { modelResult, withRequestMeta } from './model-status.js';
 import { atomicWrite, syncModels } from './sync.js';
 import { dshPaths, syncDshProvider } from './dsh-sync.js';
+import { zcodeConfigPath, zcodeAvailable, syncZcodeProviders } from './zcode-sync.js';
 import { cachedProbe, modelFingerprint, probeGate, runProbeQueue, isModelLevelRejection, PROBE_COOLDOWN, PROBE_PAUSED } from './probe-policy.js';
 
 const dataDir = process.env.BUDDY_DATA_DIR || dataDirectory();
@@ -95,10 +96,15 @@ const dsh = dshPaths();
 const dshAvailable = await fs.stat(dsh.patch).then(() => true, () => false);
 if (dshAvailable) update({ dsh: { available: true } });
 
+// ZCode（智谱 ZCode 桌面版）写入目标：personal provider 规则文件，明文 JSON、文件监听热加载。
+const zcodeFile = zcodeConfigPath();
+const zcodeReady = await zcodeAvailable(zcodeFile);
+if (zcodeReady) update({ zcode: { available: true, file: zcodeFile } });
+
 // 写入目标由用户在界面上勾选：domestic = WorkBuddy 国内版，intl = WorkBuddy 国际版，
-// dsh = DeepSeek Harness。未保存过设置时全部开启，保持旧行为。关闭的目标会被写成空列表，
-// 从而移除本应用此前导入的条目（清理是幂等的，不会动用户自己的模型）。
-const TARGET_KEYS = ['domestic', 'intl', 'dsh'];
+// dsh = DeepSeek Harness，zcode = ZCode。未保存过设置时全部开启，保持旧行为。
+// 关闭的目标会被写成空列表，从而移除本应用此前导入的条目（清理是幂等的，不会动用户自己的模型）。
+const TARGET_KEYS = ['domestic', 'intl', 'dsh', 'zcode'];
 function targetSettings() {
   const saved = settings.targets || {};
   return Object.fromEntries(TARGET_KEYS.map(key => [key, saved[key] !== false]));
@@ -112,6 +118,7 @@ function targetState() {
     domestic: { enabled: enabled.domestic, available: !!modelsFile, file: modelsFile || null },
     intl: { enabled: enabled.intl, available: !!intlModelsFile && !sameFile, file: intlModelsFile || null, sameAsDomestic: sameFile },
     dsh: { enabled: enabled.dsh, available: dshAvailable, file: dshAvailable ? dsh.patch : null },
+    zcode: { enabled: enabled.zcode, available: zcodeReady, file: zcodeReady ? zcodeFile : null },
   };
 }
 update({ targets: targetState() });
@@ -123,6 +130,7 @@ function syncPublished(published = publishedModels().filter(m => !(settings.excl
     const domesticList = targets.domestic ? published : [];
     const dshList = targets.dsh ? published : [];
     const intlList = targets.intl ? published : [];
+    const zcodeList = targets.zcode ? published : [];
     let sync;
     if (process.env.BUDDY_NO_SYNC === '1') sync = { skipped: true, count: published.length };
     else if (!modelsFile) sync = targets.domestic
@@ -150,10 +158,18 @@ function syncPublished(published = publishedModels().filter(m => !(settings.excl
       catch (e) { intlSync = { error: e.message }; }
       update({ intl: { modelsFile: intlModelsFile, sync: { ...intlSync, time: new Date().toISOString() } } });
     }
+    // ZCode：manual provider rules 单文件合并写入，失败不影响其他目标。
+    let zcodeSync;
+    if (zcodeReady && process.env.BUDDY_NO_SYNC !== '1') {
+      try { zcodeSync = await syncZcodeProviders(zcodeFile, zcodeList, `${endpoint}/chat/completions`, key); }
+      catch (e) { zcodeSync = { error: e.message }; }
+      update({ zcode: { available: true, file: zcodeFile, sync: { ...zcodeSync, time: new Date().toISOString() } } });
+    }
     update({ sync: { ...sync, time: new Date().toISOString() }, targets: targetState() });
     const extras = {};
     if (dshSync) extras.dsh = dshSync;
     if (intlSync) extras.intl = intlSync;
+    if (zcodeSync) extras.zcode = zcodeSync;
     return Object.keys(extras).length ? { ...sync, ...extras } : sync;
   });
   return syncWrites;
