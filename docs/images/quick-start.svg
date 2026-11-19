@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 248" font-family="-apple-system,'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif">
+  <!-- panel -->
+  <rect x="0" y="0" width="1040" height="248" rx="18" fill="#F4F5F7"/>
+  <!-- cards -->
+  <g>
+    <rect x="20"  y="44" width="226" height="160" rx="12" fill="#FFFFFF" stroke="#E4E7EC"/>
+    <rect x="278" y="44" width="226" height="160" rx="12" fill="#FFFFFF" stroke="#E4E7EC"/>
+    <rect x="536" y="44" width="226" height="160" rx="12" fill="#FFFFFF" stroke="#E4E7EC"/>
+    <rect x="794" y="44" width="226" height="160" rx="12" fill="#FFFFFF" stroke="#E4E7EC"/>
+  </g>
+  <!-- arrows -->
+  <g stroke="#0A66FF" stroke-width="2.5" fill="#0A66FF">
+    <line x1="252" y1="124" x2="266" y2="124"/>
+    <path d="M266,118 L276,124 L266,130 Z" stroke="none"/>
+    <line x1="510" y1="124" x2="524" y2="124"/>
+    <path d="M524,118 L534,124 L524,130 Z" stroke="none"/>
+    <line x1="768" y1="124" x2="782" y2="124"/>
+    <path d="M782,118 L792,124 L782,130 Z" stroke="none"/>
+  </g>
+  <!-- step badges -->
+  <g>
+    <circle cx="52"  cy="76" r="15" fill="#0A66FF"/>
+    <circle cx="310" cy="76" r="15" fill="#0A66FF"/>
+    <circle cx="568" cy="76" r="15" fill="#0A66FF"/>
+    <circle cx="826" cy="76" r="15" fill="#12805C"/>
+    <text x="52"  y="81" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">1</text>
+    <text x="310" y="81" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">2</text>
+    <text x="568" y="81" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">3</text>
+    <text x="826" y="81" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">✓</text>
+  </g>
+  <!-- titles -->
+  <g font-size="17" font-weight="650" fill="#1D2129">
+    <text x="76"  y="82">下载安装</text>
+    <text x="334" y="82">启动应用</text>
+    <text x="592" y="82">勾选导入</text>
+    <text x="850" y="82">开始使用</text>
+  </g>
+  <!-- card 1 details -->
+  <text x="38" y="116" font-size="12.5" fill="#697080">三平台免编译，直接运行</text>
+  <g font-size="11" text-anchor="middle">
+    <rect x="38"  y="128" width="64" height="22" rx="11" fill="#EAF1FF"/>
+    <text x="70"  y="143" fill="#0A5AE0">Windows</text>
+    <rect x="108" y="128" width="58" height="22" rx="11" fill="#EAF1FF"/>
+    <text x="137" y="143" fill="#0A5AE0">macOS</text>
+    <rect x="172" y="128" width="52" height="22" rx="11" fill="#EAF1FF"/>
+    <text x="198" y="143" fill="#0A5AE0">Linux</text>
+  </g>
+  <text x="38" y="182" font-size="11" fill="#98A0AE">安装包见 GitHub Releases</text>
+  <!-- card 2 details -->
+  <text x="296" y="120" font-size="12.5" fill="#697080">首次启动自动准备 OpenCode，</text>
+  <text x="296" y="141" font-size="12.5" fill="#697080">扫描免费模型并检测可用性</text>
+  <!-- card 3 details -->
+  <text x="554" y="120" font-size="12.5" fill="#697080">勾选可用模型，点击「导入」</text>
+  <text x="554" y="141" font-size="12.5" fill="#697080">写入 WorkBuddy · DSH · ZCode</text>
+  <!-- card 4 details -->
+  <text x="812" y="120" font-size="12.5" fill="#697080">在 WorkBuddy 选择「BB ·」</text>
+  <text x="812" y="141" font-size="12.5" fill="#697080">前缀的免费模型，直接开聊</text>
+</svg>

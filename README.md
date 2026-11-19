@@ -2,6 +2,18 @@
 
 跨平台托盘应用，通过隔离的 OpenCode 为 WorkBuddy 提供免费模型。Electron 界面 + Node.js 代理核心。
 
+<p align="center">
+  <img src="docs/images/main-window.png" alt="BuddyBridge 主界面：免费模型检测与一键导入" width="720">
+</p>
+
+## 3 分钟上手
+
+<p align="center">
+  <img src="docs/images/quick-start.svg" alt="下载安装 → 启动应用 → 勾选导入 → 开始使用" width="880">
+</p>
+
+下载链接见 [Releases](https://github.com/hindleycheng/BuddyBridge/releases/latest)；各平台注意事项见下方「使用」章节。模型写入哪些平台由主界面「写入目标」勾选决定。
+
 技术支持：@HindleyCheng
 
 ## 构建
