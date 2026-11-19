@@ -12,6 +12,7 @@ npm test
 npm run desktop      # 开发模式运行
 npm run build:mac    # 打包 macOS ARM64 ZIP（含签名完整性校验）
 npm run build:win    # 打包 Windows x64
+npm run build:linux  # 打包 Linux x64 AppImage
 ```
 
 运行核心服务：`npm start`。开发依赖 Node.js 22+；打包后的应用不要求用户另装 Node。
@@ -42,13 +43,25 @@ npm run build:win    # 打包 Windows x64
 侧栏显示当前版本号，"检查更新"按钮（及托盘菜单"检查更新…"）查询 GitHub Releases：发现新版本时弹窗展示说明，点击"前往下载"打开浏览器下载页，覆盖安装即可。启动时也会静默检查一次。
 
 - 更新源仓库配置在 `desktop/main.cjs` 顶部的 `UPDATE_REPO`（默认 `HindleyCheng/BuddyBridge`），也可用环境变量 `BUDDY_UPDATE_REPO` 覆盖。
-- 发布新版本：打 tag（如 `v1.0.3`）并在 Release 上传对应的 zip/exe 即可，应用会自动识别。
+- 发布新版本：打 tag（如 `v1.0.3`）并在 Release 上传对应的 zip/exe/AppImage 即可，应用会自动识别。
 - 检查更新走系统代理（Chromium 网络栈），国内网络需保证 GitHub 可达。
 - 为什么不是全自动静默升级：应用为无签名构建（Mac ad-hoc），electron-updater 的下载-安装式自动更新要求正式签名；获得签名后可平滑升级为全自动。
 
 ## 使用（Windows x64）
 
 运行 `BuddyBridge-<版本>-win-x64-setup.exe` 安装后启动（未做发布者签名，SmartScreen 可能提示未知开发者，选择"仍要运行"）。WorkBuddy 配置默认自动识别；找不到时点击"导入 WorkBuddy"旁边的托盘菜单"自动查找/选择 WorkBuddy 配置…"手动指定。首次使用请先在 WorkBuddy 保存一个自定义模型。
+
+## 使用（Linux x64）
+
+```sh
+chmod +x BuddyBridge-<版本>-linux-x86_64.AppImage
+./BuddyBridge-<版本>-linux-x86_64.AppImage
+```
+
+- 免安装直接运行；校验：`sha256sum -c SHA256SUMS`（三个产物与 SHA256SUMS 同目录时全部通过，也可只比对 AppImage 对应行）。若提示无法执行，检查所在分区是否以 `noexec` 挂载（移到家目录再试）。
+- 构建自 GitHub ubuntu-24.04 runner，主流较新发行版（Ubuntu 22.04+ / Debian 12+ 等）可直接运行；AppImage 内置运行时，无需另装 Node.js。
+- 托盘依赖桌面环境的 StatusNotifier/AppIndicator 支持：KDE、XFCE 等默认可用，GNOME 需安装 AppIndicator 扩展（如 `gnome-shell-extension-appindicator`）。关闭窗口 = 后台运行：窗口隐藏、托盘图标驻留，从托盘退出才真正退出（并清理本应用导入的模型）。
+- 写入目标（WorkBuddy 国内版/国际版、DeepSeek Harness、ZCode）自动检测，行为与 macOS 一致；首次使用请先在对应平台保存一个自定义模型。
 
 ## 验证
 
